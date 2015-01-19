@@ -1,1 +1,9 @@
 I'll be writing a bunch of card game variants and hope to eventually factor out an engine that's useful for quickly implenting new card games
+Current Status
+
+Klondike works
+    needs front end
+Hearts does not work
+    needs tricks to be implemented
+    needs server?
+
