@@ -2,6 +2,7 @@ import Data.Map.Strict as Z -- for Zones
 import Control.Monad (liftM, forM) -- unless
 import Data.Array.IO
 import Data.Maybe (fromJust, isJust)
+-- import qualified Data.Sequence as S -- consider using for piles, maybe for board
 import System.Random
 
 -- import System.IO
@@ -35,6 +36,7 @@ instance Show Card where
                         in col ++ ("-A23456789TJQKA"!!r) : head (show s) : "\ESC[0m" 
         
 type OZone = [Card]-- ordered Zones
+-- type OZone = S.Seq Card
 
 data Effect = Effect (IO World -> IO World) | Quit | Undo
 

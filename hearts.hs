@@ -1,25 +1,19 @@
-import qualified Data.Map.Strict as B -- for Zones
+-- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
+import qualified Data.Sequence as S
 import Control.Monad (forM) -- liftM, unless
 import Data.Array.IO
-import Data.Maybe (isNothing, fromJust)
+import Data.Maybe (fromJust)
 import Data.List (intercalate, maximumBy)
 import System.Random
 -- import Data.Vector 
 
--- import System.IO
 type PlayerID = Int
--- type ID = Int
--- type CardID = Int
--- data ZoneID = Deck | Hand Player | Collected Player | Play deriving (Eq, Show, Ord)
 
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord)
 data Card = Card 
             {_suit::Suit, _rank::Int} deriving (Eq, Ord) --Show
--- data Card = Card 
---             { _id::ID, _suit::Suit, _rank::Int} deriving Eq --Show
 
--- consider adding a colorizing function for cleaniness sake 
 colorize :: [Int] -> String -> String
 colorize options str = "\ESC[" 
                         ++ intercalate ";" [show i | i <-options] 
@@ -37,45 +31,37 @@ instance Show Card where
                                     Diamonds    -> ([1,31,47], "D")
                         in colorize col $ ("-A23456789TJQKA"!!r) : pic
 
---type OZone = [Card]-- ordered Zones
---type UZone = Z.Map ID Card -- unordered Zones
 type UZone = Z.Set Card
 
 data Effect = Effect (World -> World) 
-                {-| Quit | Undo -}
-                | GetInput {-| Pass -}
+                | GetInput 
                 | NewTrick
 
-data PassDir = PassLeft {-| PassRight | PassAcross | NoPass-}
+data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving Eq
 data Info = TrickInfo PlayerID [(Card,PlayerID)] Scores | FirstTrick PlayerID
 data World = InRound Board Stack Info
             | StartGame 
             | StartRound PassDir Scores
             | GameOver Scores
 type Stack = [Effect]
-type Scores = [Int]
+type Scores = S.Seq Int
 
--- type Board = [UZone]
--- type Board = [Zone]
-type Board = B.Map PlayerID UZone
--- type Board = Z.Map String OZone
--- type Board = Z.Map ZoneID UZone
+type Board = S.Seq UZone
 
 gameLoop :: IO World -> IO ()
 gameLoop ioworld = do
             world <- ioworld
             case world of
                 StartGame -> do
-                    -- set scores to zero
                     -- get player names etc.
                     --
                     putStrLn "Start Game"
-                    gameLoop $ return $ StartRound PassLeft [0,0,0,0]
+                    gameLoop $ return $ StartRound PassLeft $ S.fromList [0,0,0,0]
                 GameOver scores -> do
                     putStrLn "Game Over"
                     print scores
                     return ()
-                StartRound _pass_dir scores ->
+                StartRound pass_dir scores ->
                     if checkScores scores
                         then gameLoop $ return $ GameOver scores
                         else do
@@ -84,10 +70,14 @@ gameLoop ioworld = do
                         let h1 = Z.fromList $ take 13 $ drop 13 deck
                         let h2 = Z.fromList $ take 13 $ drop 26 deck
                         let h3 = Z.fromList $ take 13 $ drop 39 deck
-                        let board = B.insert 0 h0 $ B.insert 1 h1 $ B.insert 2 h2 $ B.insert 3 h3 $ B.empty
+                        let deal = S.fromList [h0,h1,h2,h3]
                         -- distribute deck to player hands
                         -- pass
-                        let who_starts = 0 -- TODO see who has two of clubs
+                        board <- if pass_dir == NoPass then return deal
+                        else do
+                            putStrLn "Should pass cards"
+                            return deal
+                        let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
                         gameLoop $ return $ InRound board [NewTrick] $ FirstTrick who_starts
                     where checkScores _ = False
                 InRound board (now:on_stack) info -> do
@@ -101,12 +91,11 @@ gameLoop ioworld = do
                             -- compute winner
                             -- add scores to current score
                             -- add 4 get input to stack
-                            let w = computeWinner info
-                                s = computePoints info
+                            let (w,s) = computeWinner info
                                 nextTrick = TrickInfo w [] s
                                 nextStep = if True --players have at least 1 card in hand 
                                     then InRound board (GetInput:GetInput:GetInput:GetInput:NewTrick:on_stack) nextTrick
-                                    else GameOver [0,0,0,0]
+                                    else GameOver s
                                     --end round
                             in
                             gameLoop $ return  nextStep
@@ -116,7 +105,7 @@ gameLoop ioworld = do
                             -- right now its hot seat mode, so we ignore
                             player_input <- getMove world'
                             gameLoop $ return $ InRound board (player_input:on_stack) info
-                        Effect move -> do 
+                        Effect move ->
                             -- putStrLn "Executing Effect"
                             -- _ <- getLine
                             gameLoop $ return $ move world'
@@ -131,37 +120,41 @@ getMove w@(InRound board _stack info) = do
         putStrLn "Illegal move:"
         getMove w
     where TrickInfo cur_player played _scores = info 
-          hand = fromJust $ B.lookup cur_player board 
+          hand = board `S.index` cur_player
           holds c = Z.member c hand
-          followsSuitIfAble card 
-            = if null played 
-                then True
-                else
-                    let lead_suit = _suit $ fst $ head played
-                        matches_lead c = _suit c == lead_suit
-                        has_lead = Z.foldr ((||).matches_lead) False hand
-                    in
-                    matches_lead card || not has_lead 
+          followsSuitIfAble card =
+                  -- TODO: ensure hearts cannot be lead until it has been broken
+                  let lead_suit = _suit $ fst $ head played
+                      matches_lead c = _suit c == lead_suit
+                      has_lead = Z.foldr ((||).matches_lead) False hand
+                  in
+                  -- note: lazy evaluation ensures we only examine the head
+                  -- of played when it is non-empty
+                  null played || matches_lead card || not has_lead 
 
-computeWinner :: Info -> PlayerID 
-computeWinner (FirstTrick holds2c) = holds2c
-computeWinner (TrickInfo _ played@((lead,_):_) _scores) =
+computeWinner :: Info -> (PlayerID, Scores)
+computeWinner (FirstTrick holds2c) = (holds2c, S.fromList [0,0,0,0])
+computeWinner (TrickInfo _ played@((lead,_):_) scores) =
     let lead_suit = _suit lead
         (_best_card, winner) = maximumBy (cmpWith lead_suit) played
+        pts (Card s r) | s==Hearts = 1
+                       | r==12 && s==Spades = 13
+                       | otherwise = 0
+        trickVal = sum $ map (pts.fst) played 
+        new_scores = S.adjust (+ trickVal) winner scores
     in
-        winner
-    where cmpWith s (Card s1 r1,_) (Card s2 r2, _) | s2 == s1  = compare r1 r2 
-                                                   | s1 == s   = GT
-                                                   | otherwise = LT
-
-computePoints :: Info -> Scores
-computePoints _ = [0,0,0,0]
-
-    
+        (winner, new_scores)
+    where cmpWith s (Card s1 r1,_) (Card s2 r2, _) 
+            | s2 == s1  = compare r1 r2 
+            | s1 == s   = GT
+            | otherwise = LT
+            
 
 play :: Card -> World -> World
 play card (InRound board _stack (TrickInfo cur_player played scores)) = 
-    let new_board = B.adjust (Z.delete card) cur_player board 
+    let new_board = S.adjust (Z.delete card) cur_player board 
+        -- probably not worth making played a non-list structure just to 
+        -- get nicer snoc
         new_played = played ++ [(card, cur_player)]
         next_player = (cur_player + 1) `mod` 4
     in
@@ -169,7 +162,8 @@ play card (InRound board _stack (TrickInfo cur_player played scores)) =
 
 getInput :: IO Card
 getInput = do
-    putStrLn "Choose Card: " {- for hearts players only choices in the play are which card to play 
+    putStrLn "Choose Card: " 
+    {- for hearts players only choices in the play are which card to play 
      - We'll check that it's a legal play before constructing the effect 
      -}
     mv <- getLine
@@ -187,7 +181,6 @@ parseMove [r,s] =
  - help, quit, valid_play_list, etc.
  - else give up and return invalid
  -}
-    --let rank = case r of
     Valid (Card (readSuit s) (readRank r))
 
 parseMove _ = Invalid
@@ -222,17 +215,18 @@ main :: IO ()
 main = gameLoop $ return StartGame
 
 render :: Board -> Info -> IO ()
-render board (TrickInfo cur_player played [s0,s1,s2,s3]) = do 
+render board (TrickInfo cur_player played scores) = do 
     -- if we should only be rendering the current players hand then do some checking
     putStrLn "\ESC[H\ESC[2J"
-    putStrLn $ "Player 0 Score:" ++ show s0 
-    putStrLn $ "Player 1 Score:" ++ show s1
-    putStrLn $ "Player 2 Score:" ++ show s2
-    putStrLn $ "Player 3 Score:" ++ show s3
+    showScore 0
+    showScore 1
+    showScore 2
+    showScore 3
+
     putStrLn $ "Waiting on " ++ show cur_player
     putStrLn $ "Currently > " ++ show played
     renderBoard board
-    return ()
+    where showScore i = putStrLn $ "Player " ++ show i ++ " Score:" ++ show (scores `S.index` i)
 
 render board (FirstTrick i) = do
     putStrLn $ "Player " ++ show i ++ "leads the 2c"
@@ -245,7 +239,7 @@ renderBoard board = do
     printHand 2
     printHand 3
     where printHand i = putStrLn $ (++) ( concat ["Player ", show i, " Hand: "] )
-                        $ unwords $ map show $ Z.toList $ fromJust (B.lookup i board)
+                        $ unwords $ map show $ Z.toList $ board `S.index` i
 
 stdDeck :: [Card]
 ---- setting aces at 14
