@@ -1,6 +1,7 @@
 -- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
+import qualified Data.Foldable as F
 import Control.Monad (forM) -- liftM, unless
 import Data.Array.IO
 import Data.Maybe (fromJust)
@@ -42,44 +43,50 @@ data Info = TrickInfo PlayerID [(Card,PlayerID)] Scores | FirstTrick PlayerID
 data World = InRound Board Stack Info
             | StartGame 
             | StartRound PassDir Scores
+            | RoundOver Scores
             | GameOver Scores
 type Stack = [Effect]
 type Scores = S.Seq Int
 
 type Board = S.Seq UZone
 
-gameLoop :: IO World -> IO ()
-gameLoop ioworld = do
-            world <- ioworld
+gameLoop :: World -> IO World
+gameLoop world = 
+            --world <- ioworld
             case world of
-                StartGame -> do
+                StartGame -> 
                     -- get player names etc.
                     --
-                    putStrLn "Start Game"
-                    gameLoop $ return $ StartRound PassLeft $ S.fromList [0,0,0,0]
+                    gameLoop $ StartRound PassLeft $ S.fromList [0,0,0,0]
+                RoundOver scores -> do
+                    putStrLn "Round Over"
+                    print scores
+                    return $ RoundOver scores
                 GameOver scores -> do
                     putStrLn "Game Over"
                     print scores
-                    return ()
-                StartRound pass_dir scores ->
-                    if checkScores scores
-                        then gameLoop $ return $ GameOver scores
-                        else do
-                        deck <- shuffle stdDeck
-                        let h0 = Z.fromList $ take 13 deck
-                        let h1 = Z.fromList $ take 13 $ drop 13 deck
-                        let h2 = Z.fromList $ take 13 $ drop 26 deck
-                        let h3 = Z.fromList $ take 13 $ drop 39 deck
-                        let deal = S.fromList [h0,h1,h2,h3]
-                        -- distribute deck to player hands
-                        -- pass
-                        board <- if pass_dir == NoPass then return deal
-                        else do
-                            putStrLn "Should pass cards"
-                            return deal
-                        let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
-                        gameLoop $ return $ InRound board [NewTrick] $ FirstTrick who_starts
-                    where checkScores _ = False
+                    return $ GameOver scores
+                StartRound pass_dir scores -> do
+                    deck <- shuffle stdDeck
+                    let h0 = Z.fromList $ take 13 deck
+                    let h1 = Z.fromList $ take 13 $ drop 13 deck
+                    let h2 = Z.fromList $ take 13 $ drop 26 deck
+                    let h3 = Z.fromList $ take 13 $ drop 39 deck
+                    let deal = S.fromList [h0,h1,h2,h3]
+                    -- distribute deck to player hands
+                    -- pass
+                    board <- if pass_dir == NoPass then return deal
+                    else do
+                        putStrLn "Should pass cards"
+                        return deal
+                    let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
+                    -- play round
+                    RoundOver round_scores <- gameLoop $ InRound board [NewTrick] $ FirstTrick who_starts
+                    let new_scores = S.zipWith (+) round_scores scores
+                    if checkScores new_scores then return $ GameOver new_scores
+                    -- should actually be next pass_dir
+                    else gameLoop $ StartRound pass_dir new_scores
+                    where checkScores = F.any (>100)
                 InRound board (now:on_stack) info -> do
                     -- eventually this will be server code
                     -- and rendering is client side responsibility
@@ -93,22 +100,23 @@ gameLoop ioworld = do
                             -- add 4 get input to stack
                             let (w,s) = computeWinner info
                                 nextTrick = TrickInfo w [] s
-                                nextStep = if True --players have at least 1 card in hand 
+                                nextStep = if (>0) . Z.size $ board `S.index` 0
+                                --True --players have at least 1 card in hand 
                                     then InRound board (GetInput:GetInput:GetInput:GetInput:NewTrick:on_stack) nextTrick
-                                    else GameOver s
+                                    else RoundOver s
                                     --end round
                             in
-                            gameLoop $ return  nextStep
+                            gameLoop nextStep
                         GetInput -> do
                             -- putStrLn "Get Input:"
                             -- get input from whomever cur_player is
                             -- right now its hot seat mode, so we ignore
                             player_input <- getMove world'
-                            gameLoop $ return $ InRound board (player_input:on_stack) info
+                            gameLoop $ InRound board (player_input:on_stack) info
                         Effect move ->
                             -- putStrLn "Executing Effect"
                             -- _ <- getLine
-                            gameLoop $ return $ move world'
+                            gameLoop $ move world'
 
 getMove :: World -> IO Effect
 getMove w@(InRound board _stack info) = do
@@ -212,7 +220,7 @@ readRank r
         | r `elem` "23456789" = read [r] ::Int
 
 main :: IO ()
-main = gameLoop $ return StartGame
+main = gameLoop StartGame >> return ()
 
 render :: Board -> Info -> IO ()
 render board (TrickInfo cur_player played scores) = do 
