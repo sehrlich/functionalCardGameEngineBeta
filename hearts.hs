@@ -2,7 +2,7 @@
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
-import Control.Monad (forM) -- liftM, unless
+import Control.Monad (forM, void) -- liftM, unless
 import Data.Array.IO
 import Data.Maybe (fromJust)
 import Data.List (intercalate, maximumBy)
@@ -54,10 +54,13 @@ gameLoop :: World -> IO World
 gameLoop world = 
             --world <- ioworld
             case world of
+                -- for initialization
                 StartGame -> 
                     -- get player names etc.
                     --
                     gameLoop $ StartRound PassLeft $ S.fromList [0,0,0,0]
+
+                -- dataflow states, may not need to have them
                 RoundOver scores -> do
                     putStrLn "Round Over"
                     print scores
@@ -66,6 +69,8 @@ gameLoop world =
                     putStrLn "Game Over"
                     print scores
                     return $ GameOver scores
+
+                -- World controlling events in a round
                 StartRound pass_dir scores -> do
                     deck <- shuffle stdDeck
                     let h0 = Z.fromList $ take 13 deck
@@ -77,45 +82,47 @@ gameLoop world =
                     -- pass
                     board <- if pass_dir == NoPass then return deal
                     else do
+                        -- make this another world state
                         putStrLn "Should pass cards"
                         return deal
-                    let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
+
                     -- play round
+                    let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
                     RoundOver round_scores <- gameLoop $ InRound board [NewTrick] $ FirstTrick who_starts
+                    
                     let new_scores = S.zipWith (+) round_scores scores
                     if checkScores new_scores then return $ GameOver new_scores
-                    -- should actually be next pass_dir
-                    else gameLoop $ StartRound pass_dir new_scores
+                    else gameLoop $ StartRound next_pass_dir new_scores
                     where checkScores = F.any (>100)
+                          next_pass_dir = case pass_dir of 
+                                        PassLeft    -> PassRight
+                                        PassRight   -> PassAcross
+                                        PassAcross  -> NoPass
+                                        NoPass      -> PassLeft
+
+
+                -- World when in middle of round
                 InRound board (now:on_stack) info -> do
                     -- eventually this will be server code
                     -- and rendering is client side responsibility
                     render board info
                     let world' = InRound board on_stack info
--- need to guarantee that stack is never empty
+                    -- need to guarantee that stack is never empty
                     case now of 
                         NewTrick ->
-                            -- compute winner
-                            -- add scores to current score
-                            -- add 4 get input to stack
                             let (w,s) = computeWinner info
                                 nextTrick = TrickInfo w [] s
                                 nextStep = if (>0) . Z.size $ board `S.index` 0
-                                --True --players have at least 1 card in hand 
                                     then InRound board (GetInput:GetInput:GetInput:GetInput:NewTrick:on_stack) nextTrick
                                     else RoundOver s
-                                    --end round
                             in
                             gameLoop nextStep
                         GetInput -> do
-                            -- putStrLn "Get Input:"
                             -- get input from whomever cur_player is
                             -- right now its hot seat mode, so we ignore
                             player_input <- getMove world'
                             gameLoop $ InRound board (player_input:on_stack) info
                         Effect move ->
-                            -- putStrLn "Executing Effect"
-                            -- _ <- getLine
                             gameLoop $ move world'
 
 getMove :: World -> IO Effect
@@ -124,7 +131,7 @@ getMove w@(InRound board _stack info) = do
     if holds card && followsSuitIfAble card
     then return $ Effect (play card)
     else do 
-        -- putStrLn $ show (followsSuitIfAble card) ++ show (holds card)
+        -- Might want to explain what got violated
         putStrLn "Illegal move:"
         getMove w
     where TrickInfo cur_player played _scores = info 
@@ -137,7 +144,7 @@ getMove w@(InRound board _stack info) = do
                       has_lead = Z.foldr ((||).matches_lead) False hand
                   in
                   -- note: lazy evaluation ensures we only examine the head
-                  -- of played when it is non-empty
+                  -- of played when it is non-empty  
                   null played || matches_lead card || not has_lead 
 
 computeWinner :: Info -> (PlayerID, Scores)
@@ -171,9 +178,8 @@ play card (InRound board _stack (TrickInfo cur_player played scores)) =
 getInput :: IO Card
 getInput = do
     putStrLn "Choose Card: " 
-    {- for hearts players only choices in the play are which card to play 
-     - We'll check that it's a legal play before constructing the effect 
-     -}
+    -- for hearts players only choices in the play are which card to play 
+    -- We'll check that it's a legal play before constructing the effect 
     mv <- getLine
     case parseMove mv of
         Invalid -> do 
@@ -182,15 +188,13 @@ getInput = do
         Valid c -> return c
 
 data MoveType = Invalid | Valid Card
-parseMove :: String -> MoveType
-parseMove [r,s] = 
 {- Try to parse it as a card
  - if that fails, try to parse it as asking for a meta option
  - help, quit, valid_play_list, etc.
  - else give up and return invalid
  -}
-    Valid (Card (readSuit s) (readRank r))
-
+parseMove :: String -> MoveType
+parseMove [r,s] = Valid (Card (readSuit s) (readRank r))
 parseMove _ = Invalid
 
 readSuit :: Char -> Suit
@@ -220,12 +224,16 @@ readRank r
         | r `elem` "23456789" = read [r] ::Int
 
 main :: IO ()
-main = gameLoop StartGame >> return ()
+main = void $ gameLoop StartGame
+-- main = gameLoop StartGame >> return ()
+-- hlint recommended using Control.Monad.void
 
 render :: Board -> Info -> IO ()
 render board (TrickInfo cur_player played scores) = do 
     -- if we should only be rendering the current players hand then do some checking
+    -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
+
     showScore 0
     showScore 1
     showScore 2
