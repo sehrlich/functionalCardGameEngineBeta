@@ -43,6 +43,7 @@ data Info = TrickInfo PlayerID [(Card,PlayerID)] Scores | FirstTrick PlayerID
 data World = InRound Board Stack Info
             | StartGame 
             | StartRound PassDir Scores
+            | PassingPhase Board PassDir
             | RoundOver Scores
             | GameOver Scores
 type Stack = [Effect]
@@ -71,7 +72,7 @@ gameLoop world =
                     return $ GameOver scores
 
                 -- World controlling events in a round
-                StartRound pass_dir scores -> do
+                StartRound passDir scores -> do
                     deck <- shuffle stdDeck
                     let h0 = Z.fromList $ take 13 deck
                     let h1 = Z.fromList $ take 13 $ drop 13 deck
@@ -79,28 +80,36 @@ gameLoop world =
                     let h3 = Z.fromList $ take 13 $ drop 39 deck
                     let deal = S.fromList [h0,h1,h2,h3]
                     -- distribute deck to player hands
-                    -- pass
-                    board <- if pass_dir == NoPass then return deal
-                    else do
-                        -- make this another world state
-                        putStrLn "Should pass cards"
-                        return deal
 
                     -- play round
-                    let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
-                    RoundOver round_scores <- gameLoop $ InRound board [NewTrick] $ FirstTrick who_starts
+                    RoundOver round_scores <- gameLoop $ PassingPhase deal passDir
                     
                     let new_scores = S.zipWith (+) round_scores scores
                     if checkScores new_scores then return $ GameOver new_scores
                     else gameLoop $ StartRound next_pass_dir new_scores
                     where checkScores = F.any (>100)
-                          next_pass_dir = case pass_dir of 
+                          next_pass_dir = case passDir of 
                                         PassLeft    -> PassRight
                                         PassRight   -> PassAcross
                                         PassAcross  -> NoPass
                                         NoPass      -> PassLeft
 
 
+                -- World when trying to pass
+                PassingPhase deal passDir -> do
+                    -- pass
+                    board <- 
+                        if passDir == NoPass 
+                        then return deal
+                        else do
+                        -- make this another world state
+                        putStrLn "Should pass cards";
+                        return deal
+                    -- pi,hi = getSelection i
+                    -- rendering thing?
+                    let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
+                    gameLoop $ InRound board [NewTrick] $ FirstTrick who_starts
+                    where getSelection _i = ()
                 -- World when in middle of round
                 InRound board (now:on_stack) info -> do
                     -- eventually this will be server code
