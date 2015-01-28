@@ -1,5 +1,6 @@
 -- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
+import Data.Sequence ((|>), (<|), ViewR ((:>)), ViewL ((:<)))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 import Control.Monad (forM, void) -- liftM, unless
@@ -64,6 +65,7 @@ gameLoop world =
                 -- dataflow states, may not need to have them
                 RoundOver scores -> do
                     putStrLn "Round Over"
+                    -- check for shooting the moon
                     print scores
                     return $ RoundOver scores
                 GameOver scores -> do
@@ -101,15 +103,27 @@ gameLoop world =
                     board <- 
                         if passDir == NoPass 
                         then return deal
-                        else do
-                        -- make this another world state
-                        putStrLn "Should pass cards";
-                        return deal
-                    -- pi,hi = getSelection i
-                    -- rendering thing?
+                        else 
+                        let getSelection i = return Z.empty
+                            rotate' (x :< xs) =  xs |> x
+                            rotate = rotate' . S.viewl
+                        in
+                        do
+                        -- rendering thing?
+                        s0 <- getSelection 0
+                        s1 <- getSelection 1
+                        s2 <- getSelection 2
+                        s3 <- getSelection 3
+                        let s = S.fromList [s0,s1,s2,s3]
+                        let s' = case passDir of
+                                PassLeft    -> rotate s
+                                PassAcross  -> rotate $ rotate s
+                                PassRight   -> rotate $ rotate $ rotate s
+                        return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s 
+
                     let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
                     gameLoop $ InRound board [NewTrick] $ FirstTrick who_starts
-                    where getSelection _i = ()
+
                 -- World when in middle of round
                 InRound board (now:on_stack) info -> do
                     -- eventually this will be server code
