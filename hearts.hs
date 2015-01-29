@@ -9,6 +9,9 @@ import Data.Maybe (fromJust)
 import Data.List (intercalate, maximumBy)
 import System.Random
 -- import Data.Vector 
+-- consider replacing all list with sequences
+-- import prelude as qualified
+-- and importing all of sequence
 
 type PlayerID = Int
 
@@ -148,27 +151,6 @@ gameLoop world =
                         Effect move ->
                             gameLoop $ move world'
 
-getMove :: World -> IO Effect
-getMove w@(InRound board _stack info) = do
-    card <-  getInput
-    if holds card && followsSuitIfAble card
-    then return $ Effect (play card)
-    else do 
-        -- Might want to explain what got violated
-        putStrLn "Illegal move:"
-        getMove w
-    where TrickInfo cur_player played _scores = info 
-          hand = board `S.index` cur_player
-          holds c = Z.member c hand
-          followsSuitIfAble card =
-                  -- TODO: ensure hearts cannot be lead until it has been broken
-                  let lead_suit = _suit $ fst $ head played
-                      matches_lead c = _suit c == lead_suit
-                      has_lead = Z.foldr ((||).matches_lead) False hand
-                  in
-                  -- note: lazy evaluation ensures we only examine the head
-                  -- of played when it is non-empty  
-                  null played || matches_lead card || not has_lead 
 
 computeWinner :: Info -> (PlayerID, Scores)
 computeWinner (FirstTrick holds2c) = (holds2c, S.fromList [0,0,0,0])
@@ -197,6 +179,45 @@ play card (InRound board _stack (TrickInfo cur_player played scores)) =
         next_player = (cur_player + 1) `mod` 4
     in
         InRound new_board _stack (TrickInfo next_player new_played scores)
+
+getMove :: World -> IO Effect
+getMove w@(InRound board _stack info) = do
+    card <-  getCardFromHand hand
+    if followsSuitIfAble card
+    then return $ Effect (play card)
+    else do 
+        putStrLn "Illegal move: must follow suit"
+        getMove w
+    where TrickInfo cur_player played _scores = info 
+          hand = board `S.index` cur_player
+          followsSuitIfAble card =
+                  -- TODO: ensure hearts cannot be lead until it has been broken
+                  let lead_suit = _suit $ fst $ head played
+                      matches_lead c = _suit c == lead_suit
+                      has_lead = Z.foldr ((||).matches_lead) False hand
+                  in
+                  -- note: lazy evaluation ensures we only examine the head
+                  -- of played when it is non-empty  
+                  null played || matches_lead card || not has_lead 
+
+getMultiCards :: Int -> UZone -> IO (Z.Set Card)
+getMultiCards 0 _ = return Z.empty
+--getMultiCards _ empty = return Z.empty
+getMultiCards i hand = do
+    card <- getCardFromHand hand
+    others <- getMultiCards (i-1) (Z.delete card hand)
+    return $ card `Z.insert` others
+
+
+getCardFromHand :: UZone -> IO Card
+getCardFromHand hand = do
+    putStrLn "Choose a card:"
+    card <- getInput
+    if card `Z.member` hand
+    then return card
+    else do
+        putStrLn "Error: Card not in hand"
+        getCardFromHand hand
 
 getInput :: IO Card
 getInput = do
