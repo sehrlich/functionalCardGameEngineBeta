@@ -107,7 +107,7 @@ gameLoop world =
                         if passDir == NoPass 
                         then return deal
                         else 
-                        let getSelection i = return Z.empty
+                        let getSelection i = getMultiCards 3 (deal `S.index` i)
                             rotate' (x :< xs) =  xs |> x
                             rotate = rotate' . S.viewl
                         in
@@ -211,7 +211,7 @@ getMultiCards i hand = do
 
 getCardFromHand :: UZone -> IO Card
 getCardFromHand hand = do
-    putStrLn "Choose a card:"
+    renderHand hand
     card <- getInput
     if card `Z.member` hand
     then return card
@@ -266,6 +266,8 @@ readRank r
         | r=='T' = 10
         | r=='t' = 10
         | r `elem` "23456789" = read [r] ::Int
+        | otherwise = 0 
+        -- temporary thing should correspond to card not in hand
 
 main :: IO ()
 main = void $ gameLoop StartGame
@@ -298,8 +300,12 @@ renderBoard board = do
     printHand 1
     printHand 2
     printHand 3
-    where printHand i = putStrLn $ (++) ( concat ["Player ", show i, " Hand: "] )
-                        $ unwords $ map show $ Z.toList $ board `S.index` i
+    where printHand i = do
+                        putStr $ concat ["Player ", show i, " Hand: "]
+                        renderHand $ board `S.index` i
+
+renderHand :: UZone -> IO ()
+renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
 
 stdDeck :: [Card]
 ---- setting aces at 14
