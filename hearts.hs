@@ -69,8 +69,15 @@ gameLoop world =
                 RoundOver scores -> do
                     putStrLn "Round Over"
                     -- check for shooting the moon
-                    print scores
-                    return $ RoundOver scores
+                    let moon_shot = 26 `S.elemIndexL` scores
+                    scores' <- 
+                        case moon_shot of
+                            Nothing -> return scores
+                            Just p -> do
+                                putStrLn $ "Player " ++ show p ++ " shot the moon"
+                                return $ fmap (26-) scores
+                    return $ RoundOver scores'
+
                 GameOver scores -> do
                     putStrLn "Game Over"
                     print scores
@@ -146,7 +153,7 @@ gameLoop world =
                         GetInput -> do
                             -- get input from whomever cur_player is
                             -- right now its hot seat mode, so we ignore
-                            player_input <- getMove world'
+                            player_input <- getMove board info
                             gameLoop $ InRound board (player_input:on_stack) info
                         Effect move ->
                             gameLoop $ move world'
@@ -180,14 +187,14 @@ play card (InRound board _stack (TrickInfo cur_player played scores)) =
     in
         InRound new_board _stack (TrickInfo next_player new_played scores)
 
-getMove :: World -> IO Effect
-getMove w@(InRound board _stack info) = do
+getMove :: Board -> Info -> IO Effect
+getMove board info = do
     card <-  getCardFromHand hand
     if followsSuitIfAble card
     then return $ Effect (play card)
     else do 
         putStrLn "Illegal move: must follow suit"
-        getMove w
+        getMove board info
     where TrickInfo cur_player played _scores = info 
           hand = board `S.index` cur_player
           followsSuitIfAble card =

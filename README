@@ -4,9 +4,6 @@ Current Status
 Klondike works
     needs front end
 Hearts does not work
-    needs passing to be implemented
-    needs rounds to end and proceed properly
-        check for shooting the moon, check to see if game over
     ensure hearts can't be lead until broken
+    no garbage on first trick
     needs server? ai for testing (just play first valid card)
-
