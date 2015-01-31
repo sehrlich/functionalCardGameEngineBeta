@@ -114,12 +114,13 @@ gameLoop world =
                         if passDir == NoPass 
                         then return deal
                         else 
-                        let getSelection i = getMultiCards 3 (deal `S.index` i)
+                        let getSelection i = do
+                                render $ Passing (deal `S.index` i)
+                                getMultiCards 3 (deal `S.index` i)
                             rotate' (x :< xs) =  xs |> x
                             rotate = rotate' . S.viewl
                         in
                         do
-                        -- rendering thing?
                         s0 <- getSelection 0
                         s1 <- getSelection 1
                         s2 <- getSelection 2
@@ -138,7 +139,7 @@ gameLoop world =
                 InRound board (now:on_stack) info -> do
                     -- eventually this will be server code
                     -- and rendering is client side responsibility
-                    render board info
+                    render (RenderInRound board info)
                     let world' = InRound board on_stack info
                     -- need to guarantee that stack is never empty
                     case now of 
@@ -218,7 +219,7 @@ getMultiCards i hand = do
 
 getCardFromHand :: UZone -> IO Card
 getCardFromHand hand = do
-    renderHand hand
+    -- renderHand hand
     card <- getInput
     if card `Z.member` hand
     then return card
@@ -278,11 +279,18 @@ readRank r
 
 main :: IO ()
 main = void $ gameLoop StartGame
+-- main will need to start a server running gameLoop
+-- this we'll also spin up a player thread and 3 ai threads
+--
 -- main = gameLoop StartGame >> return ()
 -- hlint recommended using Control.Monad.void
 
-render :: Board -> Info -> IO ()
-render board (TrickInfo cur_player played scores) = do 
+-- rewriting this for servery stuff
+data RenderInfo = RenderInRound Board Info | Passing UZone | BetweenRounds
+render :: RenderInfo -> IO ()
+
+--render :: Board -> Info -> IO ()
+render (RenderInRound board (TrickInfo cur_player played scores)) = do 
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
@@ -297,9 +305,11 @@ render board (TrickInfo cur_player played scores) = do
     renderBoard board
     where showScore i = putStrLn $ "Player " ++ show i ++ " Score:" ++ show (scores `S.index` i)
 
-render board (FirstTrick i) = do
+render (RenderInRound board (FirstTrick i)) = do
     putStrLn $ "Player " ++ show i ++ "leads the 2c"
     renderBoard board   
+
+render (Passing hand) = renderHand hand
 
 renderBoard :: Board -> IO ()
 renderBoard board = do
