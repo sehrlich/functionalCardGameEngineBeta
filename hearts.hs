@@ -1,3 +1,5 @@
+{-# LANGUAGE ViewPatterns #-}
+
 -- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
 import Data.Sequence ((|>), (<|), ViewR ((:>)), ViewL ((:<)))
@@ -43,7 +45,7 @@ data Effect = Effect (World -> World)
                 | NewTrick
 
 data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving Eq
-data Info = TrickInfo PlayerID [(Card,PlayerID)] Scores | FirstTrick PlayerID
+data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores | FirstTrick PlayerID
 data World = InRound Board Stack Info
             | StartGame 
             | StartRound PassDir Scores
@@ -87,121 +89,114 @@ main = void $ gameLoop StartGame
 -- hlint recommended using Control.Monad.void
 
 gameLoop :: World -> IO World
-gameLoop world = 
-            --world <- ioworld
-            case world of
-                -- for initialization
-                StartGame -> 
-                    -- get player names etc.
-                    --
-                    gameLoop $ StartRound PassLeft $ S.fromList [0,0,0,0]
+-- for initialization
+-- get player names etc.
+--
+gameLoop StartGame = gameLoop $ StartRound PassLeft $ S.fromList [0,0,0,0]
 
-                -- dataflow states, may not need to have them
-                RoundOver scores -> do
-                    putStrLn "Round Over"
-                    -- check for shooting the moon
-                    let moon_shot = 26 `S.elemIndexL` scores
-                    scores' <- 
-                        case moon_shot of
-                            Nothing -> return scores
-                            Just p -> do
-                                putStrLn $ "Player " ++ show p ++ " shot the moon"
-                                return $ fmap (26-) scores
-                    return $ RoundOver scores'
+-- dataflow states, may not need to have them
+gameLoop (RoundOver scores) 
+    = do
+    putStrLn "Round Over"
+    -- check for shooting the moon
+    let moon_shot = 26 `S.elemIndexL` scores
+    scores' <- 
+        case moon_shot of
+            Nothing -> return scores
+            Just p -> do
+                putStrLn $ "Player " ++ show p ++ " shot the moon"
+                return $ fmap (26-) scores
+    return $ RoundOver scores'
 
-                GameOver scores -> do
-                    putStrLn "Game Over"
-                    print scores
-                    return $ GameOver scores
+gameLoop (GameOver scores) 
+    = do
+    putStrLn "Game Over"; print scores -- should really be send message to clients
+    return $ GameOver scores
 
-                -- World controlling events in a round
-                StartRound passDir scores -> do
-                    deck <- shuffle stdDeck
-                    let h0 = Z.fromList $ take 13 deck
-                    let h1 = Z.fromList $ take 13 $ drop 13 deck
-                    let h2 = Z.fromList $ take 13 $ drop 26 deck
-                    let h3 = Z.fromList $ take 13 $ drop 39 deck
-                    let deal = S.fromList [h0,h1,h2,h3]
-                    -- distribute deck to player hands
-
-                    -- play round
-                    RoundOver round_scores <- gameLoop $ PassingPhase deal passDir
-                    
-                    let new_scores = S.zipWith (+) round_scores scores
-                    if checkScores new_scores then return $ GameOver new_scores
-                    else gameLoop $ StartRound next_pass_dir new_scores
-                    where checkScores = F.any (>100)
-                          next_pass_dir = case passDir of 
-                                        PassLeft    -> PassRight
-                                        PassRight   -> PassAcross
-                                        PassAcross  -> NoPass
-                                        NoPass      -> PassLeft
+-- World controlling events in a round
+gameLoop (StartRound passDir scores) 
+    = do
+    deck <- shuffle stdDeck
+    let h0 = Z.fromList $ take 13 deck
+    let h1 = Z.fromList $ take 13 $ drop 13 deck
+    let h2 = Z.fromList $ take 13 $ drop 26 deck
+    let h3 = Z.fromList $ take 13 $ drop 39 deck
+    let deal = S.fromList [h0,h1,h2,h3]
+    -- distribute deck to player hands 
+    -- play round 
+    RoundOver round_scores <- gameLoop $ PassingPhase deal passDir
+    
+    let new_scores = S.zipWith (+) round_scores scores
+    if checkScores new_scores then return $ GameOver new_scores
+    else gameLoop $ StartRound next_pass_dir new_scores
+    where checkScores = F.any (>100)
+          next_pass_dir = case passDir of 
+                        PassLeft    -> PassRight
+                        PassRight   -> PassAcross
+                        PassAcross  -> NoPass
+                        NoPass      -> PassLeft
 
 
                 -- World when trying to pass
-                PassingPhase deal passDir -> do
-                    -- pass
-                    board <- 
-                        if passDir == NoPass 
-                        then return deal
-                        else 
-                        let getValidatedSelection i = do  
-                                -- validate $ client (StcGetPassSelection (deal `S.index` i) passDir)
-                                 candCardSet <- client (StcGetPassSelection (deal `S.index` i) passDir)
-                                 validate candCardSet
-                            validate (CtsPassSelection toPass) = return toPass
-                            rotate' (x :< xs) =  xs |> x
-                            rotate = rotate' . S.viewl
-                        in
-                        do
-                        s0 <- getValidatedSelection 0
-                        s1 <- getValidatedSelection 1
-                        s2 <- getValidatedSelection 2
-                        s3 <- getValidatedSelection 3
-                        let s = S.fromList [s0,s1,s2,s3]
-                        let s' = case passDir of
-                                PassLeft    -> rotate s
-                                PassAcross  -> rotate $ rotate s
-                                PassRight   -> rotate $ rotate $ rotate s
-                        return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s 
+gameLoop (PassingPhase deal passDir) 
+    = do
+    board <- 
+        if passDir == NoPass then return deal else 
+        let getValidatedSelection i 
+                = do  
+                 candCardSet <- client (StcGetPassSelection (deal `S.index` i) passDir)
+                 validate candCardSet
+                -- validate $ client (StcGetPassSelection (deal `S.index` i) passDir)
+            validate (CtsPassSelection toPass) = return toPass
+            rotate (S.viewl -> x :< xs) =  xs |> x
+        in do
+        s0 <- getValidatedSelection 0
+        s1 <- getValidatedSelection 1
+        s2 <- getValidatedSelection 2
+        s3 <- getValidatedSelection 3
+        let s = S.fromList [s0,s1,s2,s3]
+        let s' = case passDir of
+                PassLeft    -> rotate s
+                PassAcross  -> rotate $ rotate s
+                PassRight   -> rotate $ rotate $ rotate s
+        return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s 
 
-                    let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
-                    gameLoop $ InRound board [NewTrick] $ FirstTrick who_starts
+    let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
+    gameLoop $ InRound board [NewTrick] $ FirstTrick who_starts
 
                 -- World when in middle of round
-                InRound board (now:on_stack) info -> do
-                    -- eventually this will be server code
-                    -- and rendering is client side responsibility
-                    render (RenderInRound board info)
-                    let world' = InRound board on_stack info
-                    -- need to guarantee that stack is never empty
-                    case now of 
-                        NewTrick ->
-                            let (w,s) = computeWinner info
-                                nextTrick = TrickInfo w [] s
-                                nextStep = if (>0) . Z.size $ board `S.index` 0
-                                    then InRound board (GetInput:GetInput:GetInput:GetInput:NewTrick:on_stack) nextTrick
-                                    else RoundOver s
-                            in
-                            gameLoop nextStep
-                        GetInput -> do
-                            move <- client (StcGetMove board info)
-                            let player_input = validate move
-                            gameLoop $ InRound board (player_input:on_stack) info
-                            where validate (CtsMove move) = Effect (play move)
-                        Effect move ->
-                            gameLoop $ move world'
+gameLoop (InRound board (now:on_stack) info) 
+    = do
+    render (RenderInRound board info)
+    let world' = InRound board on_stack info
+    -- need to guarantee that stack is never empty
+    case now of 
+        NewTrick ->
+            let (w,s) = computeWinner info
+                nextTrick = TrickInfo w S.empty s
+                nextStep = if (>0) . Z.size $ board `S.index` 0
+                    then InRound board (GetInput:GetInput:GetInput:GetInput:NewTrick:on_stack) nextTrick
+                    else RoundOver s
+            in
+            gameLoop nextStep
+        GetInput -> do
+            move <- client (StcGetMove board info)
+            let player_input = validate move
+            gameLoop $ InRound board (player_input:on_stack) info
+            where validate (CtsMove move) = Effect (play move)
+        Effect move ->
+            gameLoop $ move world'
 
 
 computeWinner :: Info -> (PlayerID, Scores)
 computeWinner (FirstTrick holds2c) = (holds2c, S.fromList [0,0,0,0])
-computeWinner (TrickInfo _ played@((lead,_):_) scores) =
+computeWinner (TrickInfo _ played@( S.viewl -> (lead,_) :< _) scores) =
     let lead_suit = _suit lead
-        (_best_card, winner) = maximumBy (cmpWith lead_suit) played
+        (_best_card, winner) = F.maximumBy (cmpWith lead_suit) played
         pts (Card s r) | s==Hearts = 1
                        | r==12 && s==Spades = 13
                        | otherwise = 0
-        trickVal = sum $ map (pts.fst) played 
+        trickVal = F.sum $ fmap (pts.fst) played 
         new_scores = S.adjust (+ trickVal) winner scores
     in
         (winner, new_scores)
@@ -216,7 +211,7 @@ play card (InRound board _stack (TrickInfo cur_player played scores)) =
     let new_board = S.adjust (Z.delete card) cur_player board 
         -- probably not worth making played a non-list structure just to 
         -- get nicer snoc
-        new_played = played ++ [(card, cur_player)]
+        new_played = played |> (card, cur_player)
         next_player = (cur_player + 1) `mod` 4
     in
         InRound new_board _stack (TrickInfo next_player new_played scores)
@@ -230,11 +225,7 @@ render (RenderInRound board (TrickInfo cur_player played scores)) = do
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
-
-    showScore 0
-    showScore 1
-    showScore 2
-    showScore 3
+    mapM_ showScore [0..3]
 
     putStrLn $ "Waiting on " ++ show cur_player
     putStrLn $ "Currently > " ++ show played
@@ -248,11 +239,7 @@ render (RenderInRound board (FirstTrick i)) = do
 render (Passing hand passDir) = renderHand hand
 
 renderBoard :: Board -> IO ()
-renderBoard board = do
-    printHand 0
-    printHand 1
-    printHand 2
-    printHand 3
+renderBoard board = mapM_ printHand [0..3]
     where printHand i = do
                         putStr $ concat ["Player ", show i, " Hand: "]
                         renderHand $ board `S.index` i
@@ -302,13 +289,13 @@ getMove board info = do
           hand = board `S.index` cur_player
           followsSuitIfAble card =
                   -- TODO: ensure hearts cannot be lead until it has been broken
-                  let lead_suit = _suit $ fst $ head played
+                  let lead_suit = _suit $ fst $ S.index played 0
                       matches_lead c = _suit c == lead_suit
                       has_lead = Z.foldr ((||).matches_lead) False hand
                   in
                   -- note: lazy evaluation ensures we only examine the head
                   -- of played when it is non-empty  
-                  null played || matches_lead card || not has_lead 
+                  S.null played || matches_lead card || not has_lead 
 
 getMultiCards :: Int -> UZone -> IO (Z.Set Card)
 getMultiCards 0 _ = return Z.empty
