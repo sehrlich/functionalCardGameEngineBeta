@@ -55,6 +55,37 @@ type Scores = S.Seq Int
 
 type Board = S.Seq UZone
 
+stdDeck :: [Card]
+---- setting aces at 14
+stdDeck = [Card s r | r <- [2..14], s <- [Clubs, Hearts, Spades, Diamonds]]
+
+shuffle :: [a] -> IO [a]
+-- shuffle x = return x
+shuffle xs = do
+        ar <- newArr n xs
+        forM [1..n] $ \i -> do
+            j <- randomRIO (i,n)
+            vi <- readArray ar i
+            vj <- readArray ar j
+            writeArray ar j vi
+            return vj
+  where
+    n = length xs
+    newArr :: Int -> [a] -> IO (IOArray Int a)
+    newArr n' =  newListArray (1,n') 
+
+{- Server code
+ - some of this should be farmed out into new threads 
+ -}
+
+main :: IO ()
+main = void $ gameLoop StartGame
+-- main will need to start a server running gameLoop
+-- this we'll also spin up a player thread and 3 ai threads
+--
+-- main = gameLoop StartGame >> return ()
+-- hlint recommended using Control.Monad.void
+
 gameLoop :: World -> IO World
 gameLoop world = 
             --world <- ioworld
@@ -114,17 +145,19 @@ gameLoop world =
                         if passDir == NoPass 
                         then return deal
                         else 
-                        let getSelection i = do
-                                render $ Passing (deal `S.index` i)
-                                getMultiCards 3 (deal `S.index` i)
+                        let getValidatedSelection i = do  
+                                -- validate $ client (StcGetPassSelection (deal `S.index` i) passDir)
+                                 candCardSet <- client (StcGetPassSelection (deal `S.index` i) passDir)
+                                 validate candCardSet
+                            validate (CtsPassSelection toPass) = return toPass
                             rotate' (x :< xs) =  xs |> x
                             rotate = rotate' . S.viewl
                         in
                         do
-                        s0 <- getSelection 0
-                        s1 <- getSelection 1
-                        s2 <- getSelection 2
-                        s3 <- getSelection 3
+                        s0 <- getValidatedSelection 0
+                        s1 <- getValidatedSelection 1
+                        s2 <- getValidatedSelection 2
+                        s3 <- getValidatedSelection 3
                         let s = S.fromList [s0,s1,s2,s3]
                         let s' = case passDir of
                                 PassLeft    -> rotate s
@@ -152,10 +185,10 @@ gameLoop world =
                             in
                             gameLoop nextStep
                         GetInput -> do
-                            -- get input from whomever cur_player is
-                            -- right now its hot seat mode, so we ignore
-                            player_input <- getMove board info
+                            move <- client (StcGetMove board info)
+                            let player_input = validate move
                             gameLoop $ InRound board (player_input:on_stack) info
+                            where validate (CtsMove move) = Effect (play move)
                         Effect move ->
                             gameLoop $ move world'
 
@@ -188,11 +221,80 @@ play card (InRound board _stack (TrickInfo cur_player played scores)) =
     in
         InRound new_board _stack (TrickInfo next_player new_played scores)
 
-getMove :: Board -> Info -> IO Effect
+-- rewriting this for servery stuff
+data RenderInfo = RenderInRound Board Info | Passing UZone PassDir| BetweenRounds
+render :: RenderInfo -> IO ()
+
+--render :: Board -> Info -> IO ()
+render (RenderInRound board (TrickInfo cur_player played scores)) = do 
+    -- if we should only be rendering the current players hand then do some checking
+    -- the following clears the screen
+    putStrLn "\ESC[H\ESC[2J"
+
+    showScore 0
+    showScore 1
+    showScore 2
+    showScore 3
+
+    putStrLn $ "Waiting on " ++ show cur_player
+    putStrLn $ "Currently > " ++ show played
+    renderBoard board
+    where showScore i = putStrLn $ "Player " ++ show i ++ " Score:" ++ show (scores `S.index` i)
+
+render (RenderInRound board (FirstTrick i)) = do
+    putStrLn $ "Player " ++ show i ++ "leads the 2c"
+    renderBoard board   
+
+render (Passing hand passDir) = renderHand hand
+
+renderBoard :: Board -> IO ()
+renderBoard board = do
+    printHand 0
+    printHand 1
+    printHand 2
+    printHand 3
+    where printHand i = do
+                        putStr $ concat ["Player ", show i, " Hand: "]
+                        renderHand $ board `S.index` i
+
+renderHand :: UZone -> IO ()
+renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
+
+data Message = ClientToServer | ServerToClient
+
+data ClientToServer = CtsMove Card 
+                    | CtsPassSelection (Z.Set Card)
+data ServerToClient = StcGetMove Board Info 
+                    | StcGetPassSelection UZone PassDir
+
+{- Client Side code
+ - actual mechanism of splitting it as thread to be determined
+ -
+ - Should split some validation stuff out so that
+ - it is accessible to both server and client --
+ - my client should always send valid input
+ - if server receives bad messages, it should check them
+ -
+ - Also, rendering should go here
+ -}
+
+client :: ServerToClient -> IO ClientToServer 
+client (StcGetMove board info) = do
+    card <- getMove board info
+    return $ CtsMove card
+
+client (StcGetPassSelection hand passDir) = do
+   render $ Passing hand passDir
+   cardSet <- getMultiCards 3 hand
+   -- do client validation here
+   return $ CtsPassSelection cardSet
+
+
+getMove :: Board -> Info -> IO Card
 getMove board info = do
     card <-  getCardFromHand hand
     if followsSuitIfAble card
-    then return $ Effect (play card)
+    then return card
     else do 
         putStrLn "Illegal move: must follow suit"
         getMove board info
@@ -276,69 +378,3 @@ readRank r
         | r `elem` "23456789" = read [r] ::Int
         | otherwise = 0 
         -- temporary thing should correspond to card not in hand
-
-main :: IO ()
-main = void $ gameLoop StartGame
--- main will need to start a server running gameLoop
--- this we'll also spin up a player thread and 3 ai threads
---
--- main = gameLoop StartGame >> return ()
--- hlint recommended using Control.Monad.void
-
--- rewriting this for servery stuff
-data RenderInfo = RenderInRound Board Info | Passing UZone | BetweenRounds
-render :: RenderInfo -> IO ()
-
---render :: Board -> Info -> IO ()
-render (RenderInRound board (TrickInfo cur_player played scores)) = do 
-    -- if we should only be rendering the current players hand then do some checking
-    -- the following clears the screen
-    putStrLn "\ESC[H\ESC[2J"
-
-    showScore 0
-    showScore 1
-    showScore 2
-    showScore 3
-
-    putStrLn $ "Waiting on " ++ show cur_player
-    putStrLn $ "Currently > " ++ show played
-    renderBoard board
-    where showScore i = putStrLn $ "Player " ++ show i ++ " Score:" ++ show (scores `S.index` i)
-
-render (RenderInRound board (FirstTrick i)) = do
-    putStrLn $ "Player " ++ show i ++ "leads the 2c"
-    renderBoard board   
-
-render (Passing hand) = renderHand hand
-
-renderBoard :: Board -> IO ()
-renderBoard board = do
-    printHand 0
-    printHand 1
-    printHand 2
-    printHand 3
-    where printHand i = do
-                        putStr $ concat ["Player ", show i, " Hand: "]
-                        renderHand $ board `S.index` i
-
-renderHand :: UZone -> IO ()
-renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
-
-stdDeck :: [Card]
----- setting aces at 14
-stdDeck = [Card s r | r <- [2..14], s <- [Clubs, Hearts, Spades, Diamonds]]
-
-shuffle :: [a] -> IO [a]
--- shuffle x = return x
-shuffle xs = do
-        ar <- newArr n xs
-        forM [1..n] $ \i -> do
-            j <- randomRIO (i,n)
-            vi <- readArray ar i
-            vj <- readArray ar j
-            writeArray ar j vi
-            return vj
-  where
-    n = length xs
-    newArr :: Int -> [a] -> IO (IOArray Int a)
-    newArr n' =  newListArray (1,n') 
