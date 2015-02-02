@@ -66,7 +66,7 @@ shuffle :: [a] -> IO [a]
 shuffle xs = do
         ar <- newArr n xs
         forM [1..n] $ \i -> do
-            j <- randomRIO (i,n)
+            j  <- randomRIO (i,n)
             vi <- readArray ar i
             vj <- readArray ar j
             writeArray ar j vi
@@ -180,13 +180,17 @@ gameLoop (InRound board (now:on_stack) info)
             in
             gameLoop nextStep
         GetInput -> do
-            move <- client (StcGetMove board info)
+            let hand = board `S.index` curPlayer info
+            move <- client (StcGetMove hand info)
             let player_input = validate move
             gameLoop $ InRound board (player_input:on_stack) info
             where validate (CtsMove move) = Effect (play move)
         Effect move ->
             gameLoop $ move world'
 
+curPlayer :: Info -> Int
+curPlayer (TrickInfo p _ _) = p
+curPlayer (FirstTrick p) = p
 
 computeWinner :: Info -> (PlayerID, Scores)
 computeWinner (FirstTrick holds2c) = (holds2c, S.fromList [0,0,0,0])
@@ -221,27 +225,28 @@ data RenderInfo = RenderInRound Board Info | Passing UZone PassDir| BetweenRound
 render :: RenderInfo -> IO ()
 
 --render :: Board -> Info -> IO ()
-render (RenderInRound board (TrickInfo cur_player played scores)) = do 
+render (RenderInRound board (TrickInfo curPlayer played scores)) = do 
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
-    mapM_ showScore [0..3]
 
-    putStrLn $ "Waiting on " ++ show cur_player
-    putStrLn $ "Currently > " ++ show played
-    renderBoard board
-    where showScore i = putStrLn $ "Player " ++ show i ++ " Score:" ++ show (scores `S.index` i)
+    renderBoard board curPlayer
+    putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show . fst) played)
+    mapM_ showScore [0..3]
+    where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
+          showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
 
 render (RenderInRound board (FirstTrick i)) = do
     putStrLn $ "Player " ++ show i ++ "leads the 2c"
-    renderBoard board   
+    renderBoard board i
 
 render (Passing hand passDir) = renderHand hand
 
-renderBoard :: Board -> IO ()
-renderBoard board = mapM_ printHand [0..3]
+renderBoard :: Board -> Int -> IO ()
+renderBoard board curPlayer = mapM_ printHand [0..3]
     where printHand i = do
-                        putStr $ concat ["Player ", show i, " Hand: "]
+                        putStr $ colorize  [44 | i==curPlayer] $ concat ["Player ", show i, " Hand:"]
+                        putStr " "
                         renderHand $ board `S.index` i
 
 renderHand :: UZone -> IO ()
@@ -251,7 +256,7 @@ data Message = ClientToServer | ServerToClient
 
 data ClientToServer = CtsMove Card 
                     | CtsPassSelection (Z.Set Card)
-data ServerToClient = StcGetMove Board Info 
+data ServerToClient = StcGetMove UZone Info 
                     | StcGetPassSelection UZone PassDir
 
 {- Client Side code
@@ -277,16 +282,15 @@ client (StcGetPassSelection hand passDir) = do
    return $ CtsPassSelection cardSet
 
 
-getMove :: Board -> Info -> IO Card
-getMove board info = do
+getMove :: UZone -> Info -> IO Card
+getMove hand info = do
     card <-  getCardFromHand hand
     if followsSuitIfAble card
     then return card
     else do 
         putStrLn "Illegal move: must follow suit"
-        getMove board info
+        getMove hand info
     where TrickInfo cur_player played _scores = info 
-          hand = board `S.index` cur_player
           followsSuitIfAble card =
                   -- TODO: ensure hearts cannot be lead until it has been broken
                   let lead_suit = _suit $ fst $ S.index played 0
@@ -365,3 +369,12 @@ readRank r
         | r `elem` "23456789" = read [r] ::Int
         | otherwise = 0 
         -- temporary thing should correspond to card not in hand
+
+{- The trivial ai -}
+aiclient :: ServerToClient -> IO ClientToServer 
+aiclient (StcGetMove hand info) = do
+    card <- getMove hand info
+    return $ CtsMove card
+
+-- aiclient (StcGetPassSelection hand passDir) = do
+   -- return $ CtsPassSelection cardSet
