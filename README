@@ -7,3 +7,4 @@ Hearts does not work
     ensure hearts can't be lead until broken
     no garbage on first trick
     needs server? ai for testing (just play first valid card)
+    getInput needs to be player specific
