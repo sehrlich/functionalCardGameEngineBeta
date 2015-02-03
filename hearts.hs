@@ -285,21 +285,23 @@ client (StcGetPassSelection hand passDir) = do
 getMove :: UZone -> Info -> IO Card
 getMove hand info = do
     card <-  getCardFromHand hand
-    if followsSuitIfAble card
+    if followsSuitIfAble hand info card
     then return card
     else do 
         putStrLn "Illegal move: must follow suit"
         getMove hand info
     where TrickInfo cur_player played _scores = info 
-          followsSuitIfAble card =
-                  -- TODO: ensure hearts cannot be lead until it has been broken
-                  let lead_suit = _suit $ fst $ S.index played 0
-                      matches_lead c = _suit c == lead_suit
-                      has_lead = Z.foldr ((||).matches_lead) False hand
-                  in
-                  -- note: lazy evaluation ensures we only examine the head
-                  -- of played when it is non-empty  
-                  S.null played || matches_lead card || not has_lead 
+          
+followsSuitIfAble :: UZone -> Info -> Card -> Bool
+followsSuitIfAble hand info@(TrickInfo _ played _) card =
+      -- TODO: ensure hearts cannot be lead until it has been broken
+      let lead_suit = _suit $ fst $ S.index played 0
+          matches_lead c = _suit c == lead_suit
+          has_lead = Z.foldr ((||).matches_lead) False hand
+      in
+      -- note: lazy evaluation ensures we only examine the head
+      -- of played when it is non-empty  
+      S.null played || matches_lead card || not has_lead 
 
 getMultiCards :: Int -> UZone -> IO (Z.Set Card)
 getMultiCards 0 _ = return Z.empty
@@ -372,9 +374,11 @@ readRank r
 
 {- The trivial ai -}
 aiclient :: ServerToClient -> IO ClientToServer 
-aiclient (StcGetMove hand info) = do
-    card <- getMove hand info
-    return $ CtsMove card
+aiclient (StcGetMove hand info) = 
+    case F.find (followsSuitIfAble hand info) $ Z.toList hand of 
+        Nothing   -> error "apparently cannot play card"
+        Just card -> return $ CtsMove card
 
--- aiclient (StcGetPassSelection hand passDir) = do
-   -- return $ CtsPassSelection cardSet
+aiclient (StcGetPassSelection hand passDir) = do
+    let cardSet = Z.fromList $ take 3 $ Z.toList hand
+    return $ CtsPassSelection cardSet
