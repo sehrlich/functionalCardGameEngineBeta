@@ -6,5 +6,5 @@ Klondike works
 Hearts does not work
     ensure hearts can't be lead until broken
     no garbage on first trick
-    needs server? ai for testing (just play first valid card)
-    getInput needs to be player specific
+    needs server 
+    ai can be better for testing (if can dodge trick, throw points. If can't win big)

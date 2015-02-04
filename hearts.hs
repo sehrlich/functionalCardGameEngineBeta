@@ -144,7 +144,7 @@ gameLoop (PassingPhase deal passDir)
         if passDir == NoPass then return deal else 
         let getValidatedSelection i 
                 = do  
-                 candCardSet <- client (StcGetPassSelection (deal `S.index` i) passDir)
+                 candCardSet <- msgClient i (StcGetPassSelection (deal `S.index` i) passDir)
                  validate candCardSet
                 -- validate $ client (StcGetPassSelection (deal `S.index` i) passDir)
             validate (CtsPassSelection toPass) = return toPass
@@ -181,12 +181,21 @@ gameLoop (InRound board (now:on_stack) info)
             gameLoop nextStep
         GetInput -> do
             let hand = board `S.index` curPlayer info
-            move <- client (StcGetMove hand info)
+            move <- msgClient (curPlayer info) (StcGetMove hand info)
             let player_input = validate move
             gameLoop $ InRound board (player_input:on_stack) info
             where validate (CtsMove move) = Effect (play move)
         Effect move ->
             gameLoop $ move world'
+
+msgClient :: PlayerID -> ServerToClient -> IO ClientToServer
+msgClient 0 = client
+msgClient _ = aiclient
+-- msgClient i m = do
+--             putStrLn $"message to "++ show i
+--             case i of
+--                 0 -> client m
+--                 otherwise -> aiclient m
 
 curPlayer :: Info -> Int
 curPlayer (TrickInfo p _ _) = p
