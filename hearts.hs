@@ -162,7 +162,7 @@ gameLoop (PassingPhase deal passDir)
         return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s 
 
     let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
-    gameLoop $ InRound board [NewTrick] $ FirstTrick who_starts
+    gameLoop $ InRound board [GetInput,GetInput,GetInput,GetInput,NewTrick] $ FirstTrick who_starts
 
                 -- World when in middle of round
 gameLoop (InRound board (now:on_stack) info) 
@@ -280,8 +280,8 @@ data ServerToClient = StcGetMove UZone Info
  -}
 
 client :: ServerToClient -> IO ClientToServer 
-client (StcGetMove board info) = do
-    card <- getMove board info
+client (StcGetMove hand info) = do
+    card <- getMove hand info
     return $ CtsMove card
 
 client (StcGetPassSelection hand passDir) = do
@@ -293,7 +293,7 @@ client (StcGetPassSelection hand passDir) = do
 
 getMove :: UZone -> Info -> IO Card
 getMove hand info = do
-    card <-  getCardFromHand hand
+    card <- getCardFromHand hand
     if followsSuitIfAble hand info card
     then return card
     else do 
@@ -303,14 +303,27 @@ getMove hand info = do
           
 followsSuitIfAble :: UZone -> Info -> Card -> Bool
 followsSuitIfAble hand info@(TrickInfo _ played _) card =
-      -- TODO: ensure hearts cannot be lead until it has been broken
-      let lead_suit = _suit $ fst $ S.index played 0
-          matches_lead c = _suit c == lead_suit
-          has_lead = Z.foldr ((||).matches_lead) False hand
-      in
-      -- note: lazy evaluation ensures we only examine the head
-      -- of played when it is non-empty  
-      S.null played || matches_lead card || not has_lead 
+    -- TODO: ensure hearts cannot be lead until it has been broken
+    let lead_suit = _suit $ fst $ S.index played 0
+        matches_lead c = _suit c == lead_suit
+        has_lead = Z.foldr ((||).matches_lead) False hand
+    in
+    -- note: lazy evaluation ensures we only examine the head
+    -- of played when it is non-empty
+    S.null played || matches_lead card || not has_lead
+
+followsSuitIfAble hand (FirstTrick _) card =
+    -- check if card is two of clubs
+    -- || if two of clubs not in hand &&
+    -- follows suit normally
+    -- plus not a heart
+    let cardIs2c = _suit card == Clubs && _rank card == 2
+        handDoesNotHave2c = True
+        clubIfAble = True
+        garbage = _suit card == Hearts || (_suit card == Spades && _rank card == 12)
+    in
+    cardIs2c || handDoesNotHave2c && clubIfAble && not garbage
+
 
 getMultiCards :: Int -> UZone -> IO (Z.Set Card)
 getMultiCards 0 _ = return Z.empty
