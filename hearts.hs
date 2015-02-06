@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE DeriveGeneric, DeriveDataTypeable #-}
 
 -- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
@@ -10,6 +11,14 @@ import Data.Array.IO
 import Data.Maybe (fromJust)
 import Data.List (intercalate, maximumBy)
 import System.Random
+
+-- for serialization
+import Data.Typeable
+import Data.Binary
+import GHC.Generics (Generic)
+
+-- import Control.Distributed.Process
+
 -- import Data.Vector 
 -- consider replacing all list with sequences
 -- import prelude as qualified
@@ -17,9 +26,9 @@ import System.Random
 
 type PlayerID = Int
 
-data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord)
+data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord, Generic, Typeable)
 data Card = Card 
-            {_suit::Suit, _rank::Int} deriving (Eq, Ord) --Show
+            {_suit::Suit, _rank::Int} deriving (Eq, Ord, Generic, Typeable) --Show
 
 colorize :: [Int] -> String -> String
 colorize options str = "\ESC[" 
@@ -44,14 +53,15 @@ data Effect = Effect (World -> World)
                 | GetInput 
                 | NewTrick
 
-data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving Eq
-data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores | FirstTrick PlayerID
+data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Generic, Typeable)
+data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores | FirstTrick PlayerID deriving (Generic, Typeable)
 data World = InRound Board Stack Info
             | StartGame 
             | StartRound PassDir Scores
             | PassingPhase Board PassDir
             | RoundOver Scores
             | GameOver Scores
+            deriving (Generic, Typeable)
 type Stack = [Effect]
 type Scores = S.Seq Int
 
@@ -79,9 +89,16 @@ shuffle xs = do
 {- Server code
  - some of this should be farmed out into new threads 
  -}
-
+--port :: Int
+--port = 44444
 main :: IO ()
-main = void $ gameLoop StartGame
+main = 
+-- withSockets $ do
+--        sock <- listenOn (PortNumber (fromIntegral port))
+--        blah <- accept sock
+--  accept 4 connections, then start game
+--  with a list of places to send/receive messages
+    void $ gameLoop StartGame
 -- main will need to start a server running gameLoop
 -- this we'll also spin up a player thread and 3 ai threads
 --
@@ -261,7 +278,7 @@ renderBoard board curPlayer = mapM_ printHand [0..3]
 renderHand :: UZone -> IO ()
 renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
 
-data Message = ClientToServer | ServerToClient
+data Message = ClientToServer | ServerToClient deriving (Generic, Typeable)
 
 data ClientToServer = CtsMove Card 
                     | CtsPassSelection (Z.Set Card)
@@ -300,7 +317,8 @@ getMove hand info = do
         putStrLn "Illegal move: must follow suit"
         getMove hand info
     where TrickInfo cur_player played _scores = info 
-          
+
+-- rename this valid play, make it pass an error
 followsSuitIfAble :: UZone -> Info -> Card -> Bool
 followsSuitIfAble hand info@(TrickInfo _ played _) card =
     -- TODO: ensure hearts cannot be lead until it has been broken
@@ -313,16 +331,13 @@ followsSuitIfAble hand info@(TrickInfo _ played _) card =
     S.null played || matches_lead card || not has_lead
 
 followsSuitIfAble hand (FirstTrick _) card =
-    -- check if card is two of clubs
-    -- || if two of clubs not in hand &&
-    -- follows suit normally
-    -- plus not a heart
-    let cardIs2c = _suit card == Clubs && _rank card == 2
-        handDoesNotHave2c = True
-        clubIfAble = True
+    let matches2c c = _suit c == Clubs && _rank c == 2
+        cardIs2c =  matches2c card
+        handDoesNotHave2c = F.any matches2c hand
+        clubIfAble = _suit card == Clubs || not (F.any ((==Clubs) . _suit) hand)
         garbage = _suit card == Hearts || (_suit card == Spades && _rank card == 12)
     in
-    cardIs2c || handDoesNotHave2c && clubIfAble && not garbage
+    cardIs2c || (handDoesNotHave2c && clubIfAble && not garbage)
 
 
 getMultiCards :: Int -> UZone -> IO (Z.Set Card)
@@ -395,6 +410,7 @@ readRank r
         -- temporary thing should correspond to card not in hand
 
 {- The trivial ai -}
+{- should replace with random choice -}
 aiclient :: ServerToClient -> IO ClientToServer 
 aiclient (StcGetMove hand info) = 
     case F.find (followsSuitIfAble hand info) $ Z.toList hand of 
