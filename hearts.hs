@@ -30,7 +30,7 @@ import Control.Concurrent.STM.TMVar
 -- and importing all of sequence
 
 type PlayerID = Int
---  type Player = (TVar ServerToClient, TMVar ClientToServer, ThreadId, PlayerID)??
+type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
 
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord, Generic, Typeable)
 data Card = Card 
@@ -97,29 +97,40 @@ shuffle xs = do
  -}
 --port :: Int
 --port = 44444
-constructPlayerThread :: TMVar ServerToClient -> TMVar ClientToServer -> (ServerToClient -> IO ClientToServer) -> IO ()
-constructPlayerThread inBox outBox respond 
-    = forever $ do 
-        message <- atomically $ takeTMVar inBox
-        response <- respond message
-        atomically $ putTMVar outBox response
+constructPlayer :: (ServerToClient -> IO ClientToServer) -> IO Player
+constructPlayer respondTo 
+    = do
+    inbox  <- newEmptyTMVarIO -- :: (TMVar ServerToClient)
+    outbox <- newEmptyTMVarIO -- :: (TMVar ClientToServer)
+    thread <- forkIO $ playerThread inbox outbox respondTo
+    return (inbox, outbox, thread)
+
+    where playerThread inbox outbox respond = forever $ do 
+            message <- atomically $ takeTMVar inbox
+            response <- respondTo message
+            atomically $ putTMVar outbox response
 
 main :: IO ()
-main = void $ gameLoop StartGame
+main = do
+        p0 <- constructPlayer client
+        p1 <- constructPlayer aiclient
+        p2 <- constructPlayer aiclient
+        p3 <- constructPlayer aiclient
+        void $ gameLoop [p0,p1,p2,p3] StartGame
 -- iteration 1) Spawn four threads. each thread will contain
 -- a tmvar message and will attempt to read it. Once it can read it compose a response
 -- (through either client or ai client function) and put it back in the tmvar
 --
 -- constructPlayer 
 
-gameLoop :: World -> IO World
+gameLoop :: [Player] -> World -> IO World
 -- for initialization
 -- get player names etc.
 --
-gameLoop StartGame = gameLoop $ StartRound PassLeft $ S.fromList [0,0,0,0]
+gameLoop players StartGame = gameLoop players $ StartRound PassLeft $ S.fromList [0,0,0,0]
 
 -- dataflow states, may not need to have them
-gameLoop (RoundOver scores) 
+gameLoop players (RoundOver scores) 
     = do
     putStrLn "Round Over"
     -- check for shooting the moon
@@ -132,13 +143,13 @@ gameLoop (RoundOver scores)
                 return $ fmap (26-) scores
     return $ RoundOver scores'
 
-gameLoop (GameOver scores) 
+gameLoop players (GameOver scores) 
     = do
     putStrLn "Game Over"; print scores -- should really be send message to clients
     return $ GameOver scores
 
 -- World controlling events in a round
-gameLoop (StartRound passDir scores) 
+gameLoop players (StartRound passDir scores) 
     = do
     deck <- shuffle stdDeck
     let h0 = Z.fromList $ take 13 deck
@@ -148,11 +159,11 @@ gameLoop (StartRound passDir scores)
     let deal = S.fromList [h0,h1,h2,h3]
     -- distribute deck to player hands 
     -- play round 
-    RoundOver round_scores <- gameLoop $ PassingPhase deal passDir
+    RoundOver round_scores <- gameLoop players $ PassingPhase deal passDir
     
     let new_scores = S.zipWith (+) round_scores scores
     if checkScores new_scores then return $ GameOver new_scores
-    else gameLoop $ StartRound next_pass_dir new_scores
+    else gameLoop players $ StartRound next_pass_dir new_scores
     where checkScores = F.any (>100)
           next_pass_dir = case passDir of 
                         PassLeft    -> PassRight
@@ -162,13 +173,13 @@ gameLoop (StartRound passDir scores)
 
 
                 -- World when trying to pass
-gameLoop (PassingPhase deal passDir) 
+gameLoop players (PassingPhase deal passDir) 
     = do
     board <- 
         if passDir == NoPass then return deal else 
         let getValidatedSelection i 
                 = do  
-                 candCardSet <- msgClient i (StcGetPassSelection (deal `S.index` i) passDir)
+                 candCardSet <- msgClient (players!!i) (StcGetPassSelection (deal `S.index` i) passDir)
                  validate candCardSet
                 -- validate $ client (StcGetPassSelection (deal `S.index` i) passDir)
             validate (CtsPassSelection toPass) = return toPass
@@ -186,10 +197,10 @@ gameLoop (PassingPhase deal passDir)
         return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s 
 
     let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
-    gameLoop $ InRound board [GetInput,GetInput,GetInput,GetInput,NewTrick] $ FirstTrick who_starts
+    gameLoop players $ InRound board [GetInput,GetInput,GetInput,GetInput,NewTrick] $ FirstTrick who_starts
 
                 -- World when in middle of round
-gameLoop (InRound board (now:on_stack) info) 
+gameLoop players (InRound board (now:on_stack) info) 
     = do
     render (RenderInRound board info)
     let world' = InRound board on_stack info
@@ -202,22 +213,23 @@ gameLoop (InRound board (now:on_stack) info)
                     then InRound board (GetInput:GetInput:GetInput:GetInput:NewTrick:on_stack) nextTrick
                     else RoundOver s
             in
-            gameLoop nextStep
+            gameLoop players nextStep
         GetInput -> do
             let hand = board `S.index` curPlayer info
-            move <- msgClient (curPlayer info) (StcGetMove hand info)
+            move <- msgClient (players!!curPlayer info) (StcGetMove hand info)
             let player_input = validate move
-            gameLoop $ InRound board (player_input:on_stack) info
+            gameLoop players $ InRound board (player_input:on_stack) info
             where validate (CtsMove move) = Effect (play move)
         Effect move ->
-            gameLoop $ move world'
+            gameLoop players $ move world'
 
--- msgClient :: Player -> ServerToClient -> IO ClientToServer
 -- put message in tmvar
 -- wait for response
-msgClient :: PlayerID -> ServerToClient -> IO ClientToServer
-msgClient 0 = client
-msgClient _ = aiclient
+msgClient :: Player -> ServerToClient -> IO ClientToServer
+msgClient player@(inbox, outbox, _) message
+    = do
+    atomically $ putTMVar inbox message
+    atomically $ takeTMVar outbox
 -- msgClient i m = do
 --             putStrLn $"message to "++ show i
 --             case i of
