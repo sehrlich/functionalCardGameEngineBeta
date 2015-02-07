@@ -7,7 +7,7 @@ import qualified Data.Set as Z
 import Data.Sequence ((|>), (<|), ViewR ((:>)), ViewL ((:<)))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
-import Control.Monad (forM, void) -- liftM, unless
+import Control.Monad (forM, void, forever) -- liftM, unless
 import Data.Array.IO
 import Data.Maybe (fromJust)
 import Data.List (intercalate, maximumBy)
@@ -18,7 +18,9 @@ import Data.Typeable
 import Data.Binary
 import GHC.Generics (Generic)
 
+import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Concurrent.STM.TMVar
 -- import Async
 -- import Control.Distributed.Process
 
@@ -28,7 +30,7 @@ import Control.Concurrent.STM
 -- and importing all of sequence
 
 type PlayerID = Int
-type Player = TVar Message
+--  type Player = (TVar ServerToClient, TMVar ClientToServer, ThreadId, PlayerID)??
 
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord, Generic, Typeable)
 data Card = Card 
@@ -95,12 +97,20 @@ shuffle xs = do
  -}
 --port :: Int
 --port = 44444
+constructPlayerThread :: TMVar ServerToClient -> TMVar ClientToServer -> (ServerToClient -> IO ClientToServer) -> IO ()
+constructPlayerThread inBox outBox respond 
+    = forever $ do 
+        message <- atomically $ takeTMVar inBox
+        response <- respond message
+        atomically $ putTMVar outBox response
+
 main :: IO ()
 main = void $ gameLoop StartGame
 -- iteration 1) Spawn four threads. each thread will contain
 -- a tmvar message and will attempt to read it. Once it can read it compose a response
 -- (through either client or ai client function) and put it back in the tmvar
 --
+-- constructPlayer 
 
 gameLoop :: World -> IO World
 -- for initialization
@@ -202,6 +212,9 @@ gameLoop (InRound board (now:on_stack) info)
         Effect move ->
             gameLoop $ move world'
 
+-- msgClient :: Player -> ServerToClient -> IO ClientToServer
+-- put message in tmvar
+-- wait for response
 msgClient :: PlayerID -> ServerToClient -> IO ClientToServer
 msgClient 0 = client
 msgClient _ = aiclient
