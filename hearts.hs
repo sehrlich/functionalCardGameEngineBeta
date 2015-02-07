@@ -60,7 +60,9 @@ data Effect = Effect (World -> World)
                 | NewTrick
 
 data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Generic, Typeable)
-data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores | FirstTrick PlayerID deriving (Generic, Typeable)
+data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores 
+            -- | FirstTrick PlayerID 
+            deriving (Generic, Typeable)
 data World = InRound Board Stack Info
             | StartGame 
             | StartRound PassDir Scores
@@ -197,7 +199,8 @@ gameLoop players (PassingPhase deal passDir)
         return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s 
 
     let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
-    gameLoop players $ InRound board [GetInput,GetInput,GetInput,GetInput,NewTrick] $ FirstTrick who_starts
+    gameLoop players $ InRound board [GetInput,GetInput,GetInput,GetInput,NewTrick] 
+                     $ TrickInfo who_starts S.empty $ S.fromList [0,0,0,0]
 
                 -- World when in middle of round
 gameLoop players (InRound board (now:on_stack) info) 
@@ -238,10 +241,11 @@ msgClient player@(inbox, outbox, _) message
 
 curPlayer :: Info -> Int
 curPlayer (TrickInfo p _ _) = p
-curPlayer (FirstTrick p) = p
+-- curPlayer (FirstTrick p) = p
 
 computeWinner :: Info -> (PlayerID, Scores)
-computeWinner (FirstTrick holds2c) = (holds2c, S.fromList [0,0,0,0])
+-- computeWinner (FirstTrick holds2c) = (holds2c, S.fromList [0,0,0,0])
+computeWinner (TrickInfo holds2c played allZeros ) | S.null played = (holds2c, allZeros)
 computeWinner (TrickInfo _ played@( S.viewl -> (lead,_) :< _) scores) =
     let lead_suit = _suit lead
         (_best_card, winner) = F.maximumBy (cmpWith lead_suit) played
@@ -284,9 +288,9 @@ render (RenderInRound board (TrickInfo curPlayer played scores)) = do
     where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
           showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
 
-render (RenderInRound board (FirstTrick i)) = do
-    putStrLn $ "Player " ++ show i ++ "leads the 2c"
-    renderBoard board i
+-- render (RenderInRound board (FirstTrick i)) = do
+--     putStrLn $ "Player " ++ show i ++ "leads the 2c"
+--     renderBoard board i
 
 render (Passing hand passDir) = renderHand hand
 
@@ -355,14 +359,14 @@ followsSuitIfAble hand info@(TrickInfo _ played _) card =
     -- of played when it is non-empty
     S.null played || matches_lead card || not has_lead
 
-followsSuitIfAble hand (FirstTrick _) card =
-    let matches2c c = _suit c == Clubs && _rank c == 2
-        cardIs2c =  matches2c card
-        handDoesNotHave2c = F.any matches2c hand
-        clubIfAble = _suit card == Clubs || not (F.any ((==Clubs) . _suit) hand)
-        garbage = _suit card == Hearts || (_suit card == Spades && _rank card == 12)
-    in
-    cardIs2c || (handDoesNotHave2c && clubIfAble && not garbage)
+-- followsSuitIfAble hand (FirstTrick _) card =
+--     let matches2c c = _suit c == Clubs && _rank c == 2
+--         cardIs2c =  matches2c card
+--         handDoesNotHave2c = F.any matches2c hand
+--         clubIfAble = _suit card == Clubs || not (F.any ((==Clubs) . _suit) hand)
+--         garbage = _suit card == Hearts || (_suit card == Spades && _rank card == 12)
+--     in
+--     cardIs2c || (handDoesNotHave2c && clubIfAble && not garbage)
 
 
 getMultiCards :: Int -> UZone -> IO (Z.Set Card)
