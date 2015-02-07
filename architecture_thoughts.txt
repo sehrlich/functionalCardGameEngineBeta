@@ -17,3 +17,5 @@ player_client should
     fork input thread
     send messages to server upon valid input
     render in response to state change
+
+server holds a thread for each client. that thread is a pipeline for sending messages to client. i.e. locally, it looks like player is just another thread providing input but it could be a remote connection. 

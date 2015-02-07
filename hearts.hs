@@ -1,5 +1,6 @@
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE DeriveGeneric, DeriveDataTypeable #-}
+{-# LANGUAGE ViewPatterns #-} -- for pattern matching on sequences
+{-# LANGUAGE DeriveGeneric, DeriveDataTypeable #-} -- for the serializable nonsense
+-- {-# LANGUAGE TemplateHaskell #-} -- make lenses maybe
 -- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- import qualified Data.Map.Strict as B -- for Zones

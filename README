@@ -4,7 +4,6 @@ Current Status
 Klondike works
     needs front end
 Hearts does not work
-    revamp info with lenses
     ensure hearts can't be lead until broken
     no garbage on first trick
     needs server 
@@ -14,3 +13,4 @@ Hearts does not work
         at round end
         -- ai can be better for testing (if can dodge trick, throw points. If
         can't win big)
+        -- revamp info with lenses
