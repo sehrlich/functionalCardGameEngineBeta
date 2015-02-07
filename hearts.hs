@@ -1,5 +1,6 @@
 {-# LANGUAGE ViewPatterns #-} -- for pattern matching on sequences
 {-# LANGUAGE DeriveGeneric, DeriveDataTypeable #-} -- for the serializable nonsense
+{-# OPTIONS_GHC -Wall -fno-warn-unused-imports #-}
 -- {-# LANGUAGE TemplateHaskell #-} -- make lenses maybe
 -- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
@@ -11,7 +12,7 @@ import qualified Data.Foldable as F
 import Control.Monad (forM, void, forever) -- liftM, unless
 import Data.Array.IO
 import Data.Maybe (fromJust)
-import Data.List (intercalate, maximumBy)
+import Data.List (intercalate)
 import System.Random
 
 -- for serialization
@@ -60,6 +61,7 @@ type UZone = Z.Set Card
 data Effect = Effect (World -> World) 
                 | GetInput 
                 | NewTrick
+                | ComputeWinner
 
 data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Generic, Typeable)
 data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores Bool
@@ -106,10 +108,10 @@ constructPlayer respondTo
     = do
     inbox  <- newEmptyTMVarIO -- :: (TMVar ServerToClient)
     outbox <- newEmptyTMVarIO -- :: (TMVar ClientToServer)
-    thread <- forkIO $ playerThread inbox outbox respondTo
+    thread <- forkIO $ playerThread inbox outbox 
     return (inbox, outbox, thread)
 
-    where playerThread inbox outbox respond = forever $ do 
+    where playerThread inbox outbox = forever $ do 
             message <- atomically $ takeTMVar inbox
             response <- respondTo message
             atomically $ putTMVar outbox response
@@ -126,7 +128,7 @@ gameLoop :: [Player] -> World -> IO World
 gameLoop players StartGame = gameLoop players $ StartRound PassLeft $ S.fromList [0,0,0,0]
 
 -- dataflow states, may not need to have them
-gameLoop players (RoundOver scores) 
+gameLoop _players (RoundOver scores) 
     = do
     putStrLn "Round Over"
     -- check for shooting the moon
@@ -137,11 +139,13 @@ gameLoop players (RoundOver scores)
             Just p -> do
                 putStrLn $ "Player " ++ show p ++ " shot the moon"
                 return $ fmap (26-) scores
+    -- send info to clients
     return $ RoundOver scores'
 
-gameLoop players (GameOver scores) 
+gameLoop _players (GameOver scores) 
     = do
     putStrLn "Game Over"; print scores -- should really be send message to clients
+    -- msg clients game over
     return $ GameOver scores
 
 -- World controlling events in a round
@@ -179,6 +183,7 @@ gameLoop players (PassingPhase deal passDir)
                  validate candCardSet
                 -- validate $ client (StcGetPassSelection (deal `S.index` i) passDir)
             validate (CtsPassSelection toPass) = return toPass
+            validate _ = error "need to make this try-catch or somesuch"
             rotate (S.viewl -> x :< xs) =  xs |> x
         in do
         s0 <- getValidatedSelection 0
@@ -187,6 +192,7 @@ gameLoop players (PassingPhase deal passDir)
         s3 <- getValidatedSelection 3
         let s = S.fromList [s0,s1,s2,s3]
         let s' = case passDir of
+                NoPass      -> s
                 PassLeft    -> rotate s
                 PassAcross  -> rotate $ rotate s
                 PassRight   -> rotate $ rotate $ rotate s
@@ -204,6 +210,9 @@ gameLoop players (InRound board (now:on_stack) info)
     -- need to guarantee that stack is never empty
     case now of 
         NewTrick ->
+            -- consider computing winner at end of trick
+            -- as new effect so 
+            -- 4x get_input : computeWinner : NewTrick
             let (w,s,b) = computeWinner info
                 nextTrick = TrickInfo w S.empty s b
                 nextStep = if (>0) . Z.size $ board `S.index` 0
@@ -211,6 +220,8 @@ gameLoop players (InRound board (now:on_stack) info)
                     else RoundOver s
             in
             gameLoop players nextStep
+        ComputeWinner -> undefined
+            -- split new trick into here
         GetInput -> do
             let hand = board `S.index` curPlayer info
             move <- msgClient (players!!curPlayer info) (StcGetMove hand info)
@@ -221,7 +232,7 @@ gameLoop players (InRound board (now:on_stack) info)
             gameLoop players $ move world'
 
 msgClient :: Player -> ServerToClient -> IO ClientToServer
-msgClient player@(inbox, outbox, _) message
+msgClient (inbox, outbox, _) message
     = do
     atomically $ putTMVar inbox message
     atomically $ takeTMVar outbox
@@ -259,27 +270,27 @@ play card (InRound board _stack (TrickInfo cur_player played scores bool)) =
         InRound new_board _stack (TrickInfo next_player new_played scores bool)
 
 -- rewriting this for servery stuff
-data RenderInfo = RenderInRound Board Info | Passing UZone PassDir| BetweenRounds
+data RenderInfo = RenderInRound Board Info | Passing UZone PassDir -- | BetweenRounds
 render :: RenderInfo -> IO ()
 
 --render :: Board -> Info -> IO ()
-render (RenderInRound board (TrickInfo curPlayer played scores _)) = do 
+render (RenderInRound board info@(TrickInfo _ played scores _)) = do 
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    renderBoard board curPlayer
+    renderBoard board $ curPlayer info
     putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show . fst) played)
     mapM_ showScore [0..3]
     where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
           showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
 
-render (Passing hand passDir) = renderHand hand
+render (Passing hand _passDir) = renderHand hand
 
 renderBoard :: Board -> Int -> IO ()
-renderBoard board curPlayer = mapM_ printHand [0..3]
+renderBoard board activePlayer = mapM_ printHand [0..3]
     where printHand i = do
-                        putStr $ colorize  [44 | i==curPlayer] $ concat ["Player ", show i, " Hand:"]
+                        putStr $ colorize  [44 | i==activePlayer] $ concat ["Player ", show i, " Hand:"]
                         putStr " "
                         renderHand $ board `S.index` i
 
@@ -303,7 +314,7 @@ aiclient (StcGetMove hand info) =
         Nothing   -> error "apparently cannot play card"
         Just card -> return $ CtsMove card
 
-aiclient (StcGetPassSelection hand passDir) = do
+aiclient (StcGetPassSelection hand _passDir) = do
     let cardSet = Z.fromList $ take 3 $ Z.toList hand
     return $ CtsPassSelection cardSet
 
@@ -345,7 +356,7 @@ getMove hand info = do
 
 -- rename this valid play, make it pass an error
 isValidPlay :: UZone -> Info -> Card -> Bool
-isValidPlay hand info@(TrickInfo _ played _ heartsBroken) card =
+isValidPlay hand _info@(TrickInfo _ played _ _heartsBroken) card =
     -- TODO: ensure hearts cannot be lead until it has been broken
     let lead_suit = _suit $ fst $ S.index played 0
         matches_lead c = _suit c == lead_suit
