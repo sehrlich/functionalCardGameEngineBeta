@@ -21,6 +21,7 @@ import GHC.Generics (Generic)
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TMVar
+
 -- import Async
 -- import Control.Distributed.Process
 
@@ -33,8 +34,7 @@ type PlayerID = Int
 type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
 
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord, Generic, Typeable)
-data Card = Card 
-            {_suit::Suit, _rank::Int} deriving (Eq, Ord, Generic, Typeable) --Show
+data Card = Card {_suit::Suit, _rank::Int} deriving (Eq, Ord, Generic, Typeable) --Show
 
 colorize :: [Int] -> String -> String
 colorize options str = "\ESC[" 
@@ -44,14 +44,15 @@ colorize options str = "\ESC["
 _cardback :: String
 _cardback = colorize [104] "()"
 
-instance Show Card where
-    show (Card s r) = 
-                        let (col,pic) = case s of
-                                    Clubs       -> ([1,30,47], "C")
-                                    Spades      -> ([1,30,47], "S")
-                                    Hearts      -> ([1,31,47], "H")
-                                    Diamonds    -> ([1,31,47], "D")
-                        in colorize col $ ("-A23456789TJQKA"!!r) : pic
+instance Show Card 
+    where show (Card s r) 
+            = 
+            let (col,pic) = case s of
+                 Clubs       -> ([1,30,47], "C")
+                 Spades      -> ([1,30,47], "S")
+                 Hearts      -> ([1,31,47], "H")
+                 Diamonds    -> ([1,31,47], "D")
+            in colorize col $ ("-A23456789TJQKA"!!r) : pic
 
 type UZone = Z.Set Card
 
@@ -60,7 +61,7 @@ data Effect = Effect (World -> World)
                 | NewTrick
 
 data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Generic, Typeable)
-data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores 
+data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores Bool
             -- | FirstTrick PlayerID 
             deriving (Generic, Typeable)
 data World = InRound Board Stack Info
@@ -119,16 +120,8 @@ main = do
         p2 <- constructPlayer aiclient
         p3 <- constructPlayer aiclient
         void $ gameLoop [p0,p1,p2,p3] StartGame
--- iteration 1) Spawn four threads. each thread will contain
--- a tmvar message and will attempt to read it. Once it can read it compose a response
--- (through either client or ai client function) and put it back in the tmvar
---
--- constructPlayer 
 
 gameLoop :: [Player] -> World -> IO World
--- for initialization
--- get player names etc.
---
 gameLoop players StartGame = gameLoop players $ StartRound PassLeft $ S.fromList [0,0,0,0]
 
 -- dataflow states, may not need to have them
@@ -200,7 +193,7 @@ gameLoop players (PassingPhase deal passDir)
 
     let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
     gameLoop players $ InRound board [GetInput,GetInput,GetInput,GetInput,NewTrick] 
-                     $ TrickInfo who_starts S.empty $ S.fromList [0,0,0,0]
+                     $ TrickInfo who_starts S.empty (S.fromList [0,0,0,0]) False
 
                 -- World when in middle of round
 gameLoop players (InRound board (now:on_stack) info) 
@@ -210,8 +203,8 @@ gameLoop players (InRound board (now:on_stack) info)
     -- need to guarantee that stack is never empty
     case now of 
         NewTrick ->
-            let (w,s) = computeWinner info
-                nextTrick = TrickInfo w S.empty s
+            let (w,s,b) = computeWinner info
+                nextTrick = TrickInfo w S.empty s b
                 nextStep = if (>0) . Z.size $ board `S.index` 0
                     then InRound board (GetInput:GetInput:GetInput:GetInput:NewTrick:on_stack) nextTrick
                     else RoundOver s
@@ -226,27 +219,18 @@ gameLoop players (InRound board (now:on_stack) info)
         Effect move ->
             gameLoop players $ move world'
 
--- put message in tmvar
--- wait for response
 msgClient :: Player -> ServerToClient -> IO ClientToServer
 msgClient player@(inbox, outbox, _) message
     = do
     atomically $ putTMVar inbox message
     atomically $ takeTMVar outbox
--- msgClient i m = do
---             putStrLn $"message to "++ show i
---             case i of
---                 0 -> client m
---                 otherwise -> aiclient m
 
 curPlayer :: Info -> Int
-curPlayer (TrickInfo p _ _) = p
--- curPlayer (FirstTrick p) = p
+curPlayer (TrickInfo p _ _ _) = p
 
-computeWinner :: Info -> (PlayerID, Scores)
--- computeWinner (FirstTrick holds2c) = (holds2c, S.fromList [0,0,0,0])
-computeWinner (TrickInfo holds2c played allZeros ) | S.null played = (holds2c, allZeros)
-computeWinner (TrickInfo _ played@( S.viewl -> (lead,_) :< _) scores) =
+computeWinner :: Info -> (PlayerID, Scores, Bool)
+computeWinner (TrickInfo holds2c played allZeros _) | S.null played = (holds2c, allZeros, False)
+computeWinner (TrickInfo _ played@( S.viewl -> (lead,_) :< _) scores broken) =
     let lead_suit = _suit lead
         (_best_card, winner) = F.maximumBy (cmpWith lead_suit) played
         pts (Card s r) | s==Hearts = 1
@@ -254,8 +238,9 @@ computeWinner (TrickInfo _ played@( S.viewl -> (lead,_) :< _) scores) =
                        | otherwise = 0
         trickVal = F.sum $ fmap (pts.fst) played 
         new_scores = S.adjust (+ trickVal) winner scores
+        broken' = broken -- || heartsInThisTrick
     in
-        (winner, new_scores)
+        (winner, new_scores, broken')
     where cmpWith s (Card s1 r1,_) (Card s2 r2, _) 
             | s2 == s1  = compare r1 r2 
             | s1 == s   = GT
@@ -263,21 +248,21 @@ computeWinner (TrickInfo _ played@( S.viewl -> (lead,_) :< _) scores) =
             
 
 play :: Card -> World -> World
-play card (InRound board _stack (TrickInfo cur_player played scores)) = 
+play card (InRound board _stack (TrickInfo cur_player played scores bool)) = 
     let new_board = S.adjust (Z.delete card) cur_player board 
         -- probably not worth making played a non-list structure just to 
         -- get nicer snoc
         new_played = played |> (card, cur_player)
         next_player = (cur_player + 1) `mod` 4
     in
-        InRound new_board _stack (TrickInfo next_player new_played scores)
+        InRound new_board _stack (TrickInfo next_player new_played scores bool)
 
 -- rewriting this for servery stuff
 data RenderInfo = RenderInRound Board Info | Passing UZone PassDir| BetweenRounds
 render :: RenderInfo -> IO ()
 
 --render :: Board -> Info -> IO ()
-render (RenderInRound board (TrickInfo curPlayer played scores)) = do 
+render (RenderInRound board (TrickInfo curPlayer played scores _)) = do 
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
@@ -287,10 +272,6 @@ render (RenderInRound board (TrickInfo curPlayer played scores)) = do
     mapM_ showScore [0..3]
     where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
           showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
-
--- render (RenderInRound board (FirstTrick i)) = do
---     putStrLn $ "Player " ++ show i ++ "leads the 2c"
---     renderBoard board i
 
 render (Passing hand passDir) = renderHand hand
 
@@ -312,6 +293,20 @@ data ClientToServer = CtsMove Card
 data ServerToClient = StcGetMove UZone Info 
                     | StcGetPassSelection UZone PassDir
                     | StcGameOver
+
+{- The trivial ai -}
+{- should replace with random choice -}
+aiclient :: ServerToClient -> IO ClientToServer 
+aiclient (StcGetMove hand info) = 
+    case F.find (isValidPlay hand info) $ Z.toList hand of 
+        Nothing   -> error "apparently cannot play card"
+        Just card -> return $ CtsMove card
+
+aiclient (StcGetPassSelection hand passDir) = do
+    let cardSet = Z.fromList $ take 3 $ Z.toList hand
+    return $ CtsPassSelection cardSet
+
+aiclient StcGameOver = return CtsDisconnect
 
 {- Client Side code
  - actual mechanism of splitting it as thread to be determined
@@ -340,16 +335,16 @@ client StcGameOver = return CtsDisconnect
 getMove :: UZone -> Info -> IO Card
 getMove hand info = do
     card <- getCardFromHand hand
-    if followsSuitIfAble hand info card
+    if isValidPlay hand info card
     then return card
     else do 
         putStrLn "Illegal move: must follow suit"
         getMove hand info
-    where TrickInfo cur_player played _scores = info 
+--    where TrickInfo cur_player played _scores = info 
 
 -- rename this valid play, make it pass an error
-followsSuitIfAble :: UZone -> Info -> Card -> Bool
-followsSuitIfAble hand info@(TrickInfo _ played _) card =
+isValidPlay :: UZone -> Info -> Card -> Bool
+isValidPlay hand info@(TrickInfo _ played _ heartsBroken) card =
     -- TODO: ensure hearts cannot be lead until it has been broken
     let lead_suit = _suit $ fst $ S.index played 0
         matches_lead c = _suit c == lead_suit
@@ -358,16 +353,10 @@ followsSuitIfAble hand info@(TrickInfo _ played _) card =
     -- note: lazy evaluation ensures we only examine the head
     -- of played when it is non-empty
     S.null played || matches_lead card || not has_lead
-
--- followsSuitIfAble hand (FirstTrick _) card =
---     let matches2c c = _suit c == Clubs && _rank c == 2
---         cardIs2c =  matches2c card
---         handDoesNotHave2c = F.any matches2c hand
---         clubIfAble = _suit card == Clubs || not (F.any ((==Clubs) . _suit) hand)
---         garbage = _suit card == Hearts || (_suit card == Spades && _rank card == 12)
---     in
---     cardIs2c || (handDoesNotHave2c && clubIfAble && not garbage)
-
+    -- to add: 
+    -- if you have 2c you must play it
+    -- if the 2c has been played, you cannot play garbage
+    -- if hearts has not been broken, you cannot lead hearts (unless you have no other option)
 
 getMultiCards :: Int -> UZone -> IO (Z.Set Card)
 getMultiCards 0 _ = return Z.empty
@@ -438,16 +427,3 @@ readRank r
         | otherwise = 0 
         -- temporary thing should correspond to card not in hand
 
-{- The trivial ai -}
-{- should replace with random choice -}
-aiclient :: ServerToClient -> IO ClientToServer 
-aiclient (StcGetMove hand info) = 
-    case F.find (followsSuitIfAble hand info) $ Z.toList hand of 
-        Nothing   -> error "apparently cannot play card"
-        Just card -> return $ CtsMove card
-
-aiclient (StcGetPassSelection hand passDir) = do
-    let cardSet = Z.fromList $ take 3 $ Z.toList hand
-    return $ CtsPassSelection cardSet
-
-aiclient StcGameOver = return CtsDisconnect
