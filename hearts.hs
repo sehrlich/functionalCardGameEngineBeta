@@ -1,5 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveGeneric, DeriveDataTypeable #-}
+-- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
@@ -17,6 +18,8 @@ import Data.Typeable
 import Data.Binary
 import GHC.Generics (Generic)
 
+import Control.Concurrent.STM
+-- import Async
 -- import Control.Distributed.Process
 
 -- import Data.Vector 
@@ -25,6 +28,7 @@ import GHC.Generics (Generic)
 -- and importing all of sequence
 
 type PlayerID = Int
+type Player = TVar Message
 
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord, Generic, Typeable)
 data Card = Card 
@@ -92,18 +96,11 @@ shuffle xs = do
 --port :: Int
 --port = 44444
 main :: IO ()
-main = 
--- withSockets $ do
---        sock <- listenOn (PortNumber (fromIntegral port))
---        blah <- accept sock
---  accept 4 connections, then start game
---  with a list of places to send/receive messages
-    void $ gameLoop StartGame
--- main will need to start a server running gameLoop
--- this we'll also spin up a player thread and 3 ai threads
+main = void $ gameLoop StartGame
+-- iteration 1) Spawn four threads. each thread will contain
+-- a tmvar message and will attempt to read it. Once it can read it compose a response
+-- (through either client or ai client function) and put it back in the tmvar
 --
--- main = gameLoop StartGame >> return ()
--- hlint recommended using Control.Monad.void
 
 gameLoop :: World -> IO World
 -- for initialization
@@ -282,8 +279,10 @@ data Message = ClientToServer | ServerToClient deriving (Generic, Typeable)
 
 data ClientToServer = CtsMove Card 
                     | CtsPassSelection (Z.Set Card)
+                    | CtsDisconnect
 data ServerToClient = StcGetMove UZone Info 
                     | StcGetPassSelection UZone PassDir
+                    | StcGameOver
 
 {- Client Side code
  - actual mechanism of splitting it as thread to be determined
@@ -307,6 +306,7 @@ client (StcGetPassSelection hand passDir) = do
    -- do client validation here
    return $ CtsPassSelection cardSet
 
+client StcGameOver = return CtsDisconnect
 
 getMove :: UZone -> Info -> IO Card
 getMove hand info = do
@@ -420,3 +420,5 @@ aiclient (StcGetMove hand info) =
 aiclient (StcGetPassSelection hand passDir) = do
     let cardSet = Z.fromList $ take 3 $ Z.toList hand
     return $ CtsPassSelection cardSet
+
+aiclient StcGameOver = return CtsDisconnect
