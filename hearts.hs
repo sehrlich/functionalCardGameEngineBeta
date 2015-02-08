@@ -360,21 +360,39 @@ getMove hand info = do
         getMove hand info
 --    where TrickInfo cur_player played _scores = info 
 
--- rename this valid play, make it pass an error
+-- This seems like an ideal thing to practice using quickCheck with
+-- namely, no matter what the trick is, should always have at least one valid play
 isValidPlay :: UZone -> Info -> Card -> Bool
-isValidPlay hand _info@(TrickInfo _ played _ _heartsBroken) card =
-    -- TODO: ensure hearts cannot be lead until it has been broken
-    let lead_suit = _suit $ fst $ S.index played 0
-        matches_lead c = _suit c == lead_suit
-        has_lead = Z.foldr ((||).matches_lead) False hand
+isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
+    let checkHandHasNo p    = not $ Z.foldr ((||).p) False hand
+        playIf p            = p card || checkHandHasNo p
+        on_lead         = S.null played
+        isFirstTrick    = is2c $ fst $ S.index played 0
+        matchesLead c   = _suit c == _suit (fst $ S.index played 0)
+        is2c c          = c == Card {_suit = Clubs, _rank = 2}
+        isGarbage c     = _suit c == Hearts || c == Card {_suit = Spades, _rank = 12}
     in
-    -- note: lazy evaluation ensures we only examine the head
-    -- of played when it is non-empty
-    S.null played || matches_lead card || not has_lead
-    -- to add: 
-    -- if you have 2c you must play it
-    -- if the 2c has been played, you cannot play garbage
-    -- if hearts has not been broken, you cannot lead hearts (unless you have no other option)
+    playIf is2c && 
+    (
+        if on_lead 
+        then not (isGarbage card || heartsBroken || checkHandHasNo (not . isGarbage))
+        else playIf matchesLead && not (isGarbage card && isFirstTrick)
+    )
+    -- note: counting on lazy evaluation to not evaluate matches_lead if played is empty
+    -- this runs into a problem when played is null, hearts are not yet broken, and someone
+    -- tries to lead hearts
+    -- playIf is2c && 
+    -- (
+    --     (on_lead 
+    --     && (not $ isGarbage card || heartsBroken || checkHandHasNo isGarbage)
+    --     )
+    -- || 
+    --     (
+    --     not on_lead
+    --     && playIf matches_lead 
+    --     && not (isGarbage card && isFirstTrick)
+    --     )
+    -- )
 
 getMultiCards :: Int -> UZone -> IO (Z.Set Card)
 getMultiCards 0 _ = return Z.empty
