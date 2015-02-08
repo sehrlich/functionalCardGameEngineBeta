@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns #-} -- for pattern matching on sequences
+{-# LANGUAGE ViewPatterns, PatternSynonyms #-} -- for pattern matching on sequences
 {-# LANGUAGE DeriveGeneric, DeriveDataTypeable #-} -- for the serializable nonsense
 {-# OPTIONS_GHC -Wall -fno-warn-unused-imports #-}
 -- {-# LANGUAGE TemplateHaskell #-} -- make lenses maybe
@@ -6,7 +6,7 @@
 
 -- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
-import Data.Sequence ((|>), (<|), ViewR ((:>)), ViewL ((:<)))
+import Data.Sequence ((|>), (<|)) -- , ViewR ((:>)), ViewL ((:<)))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 import Control.Monad (forM, void, forever) -- liftM, unless
@@ -31,6 +31,7 @@ import Control.Concurrent.STM.TMVar
 -- consider replacing all list with sequences
 -- import prelude as qualified
 -- and importing all of sequence
+
 
 type PlayerID = Int
 type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
@@ -65,7 +66,6 @@ data Effect = Effect (World -> World)
 
 data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Generic, Typeable)
 data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores Bool
-            -- | FirstTrick PlayerID 
             deriving (Generic, Typeable)
 data World = InRound Board Stack Info
             | StartGame 
@@ -184,7 +184,9 @@ gameLoop players (PassingPhase deal passDir)
                 -- validate $ client (StcGetPassSelection (deal `S.index` i) passDir)
             validate (CtsPassSelection toPass) = return toPass
             validate _ = error "need to make this try-catch or somesuch"
-            rotate (S.viewl -> x :< xs) =  xs |> x
+            rotate (x :< xs) =  xs |> x
+            rotate (Empty) =  S.empty
+            rotate _ = error "this is not a sequence"
         in do
         s0 <- getValidatedSelection 0
         s1 <- getValidatedSelection 1
@@ -199,10 +201,12 @@ gameLoop players (PassingPhase deal passDir)
         return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s 
 
     let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
-    gameLoop players $ InRound board [GetInput,GetInput,GetInput,GetInput,NewTrick] 
+    gameLoop players $ InRound board [NewTrick] 
                      $ TrickInfo who_starts S.empty (S.fromList [0,0,0,0]) False
 
                 -- World when in middle of round
+gameLoop _players (InRound _board [] _info) 
+    = error "stack is empty" 
 gameLoop players (InRound board (now:on_stack) info) 
     = do
     render (RenderInRound board info)
@@ -210,24 +214,26 @@ gameLoop players (InRound board (now:on_stack) info)
     -- need to guarantee that stack is never empty
     case now of 
         NewTrick ->
+            gameLoop players $ InRound board (GetInput:GetInput:GetInput:GetInput:ComputeWinner:on_stack) info
             -- consider computing winner at end of trick
             -- as new effect so 
             -- 4x get_input : computeWinner : NewTrick
+        ComputeWinner -> 
+            -- split new trick into here
             let (w,s,b) = computeWinner info
                 nextTrick = TrickInfo w S.empty s b
                 nextStep = if (>0) . Z.size $ board `S.index` 0
-                    then InRound board (GetInput:GetInput:GetInput:GetInput:NewTrick:on_stack) nextTrick
+                    then InRound board (NewTrick:on_stack) nextTrick
                     else RoundOver s
             in
             gameLoop players nextStep
-        ComputeWinner -> undefined
-            -- split new trick into here
         GetInput -> do
             let hand = board `S.index` curPlayer info
             move <- msgClient (players!!curPlayer info) (StcGetMove hand info)
             let player_input = validate move
             gameLoop players $ InRound board (player_input:on_stack) info
             where validate (CtsMove move) = Effect (play move)
+                  validate _ = error "recieved wrong type of message"
         Effect move ->
             gameLoop players $ move world'
 
@@ -241,8 +247,8 @@ curPlayer :: Info -> Int
 curPlayer (TrickInfo p _ _ _) = p
 
 computeWinner :: Info -> (PlayerID, Scores, Bool)
-computeWinner (TrickInfo holds2c played allZeros _) | S.null played = (holds2c, allZeros, False)
-computeWinner (TrickInfo _ played@( S.viewl -> (lead,_) :< _) scores broken) =
+--computeWinner (TrickInfo holds2c played allZeros _) | S.null played = (holds2c, allZeros, False)
+computeWinner (TrickInfo _ played@((lead,_) :< _) scores broken) =
     let lead_suit = _suit lead
         (_best_card, winner) = F.maximumBy (cmpWith lead_suit) played
         pts (Card s r) | s==Hearts = 1
@@ -257,17 +263,17 @@ computeWinner (TrickInfo _ played@( S.viewl -> (lead,_) :< _) scores broken) =
             | s2 == s1  = compare r1 r2 
             | s1 == s   = GT
             | otherwise = LT
+computeWinner _ = error "empty trick"
             
 
 play :: Card -> World -> World
 play card (InRound board _stack (TrickInfo cur_player played scores bool)) = 
     let new_board = S.adjust (Z.delete card) cur_player board 
-        -- probably not worth making played a non-list structure just to 
-        -- get nicer snoc
         new_played = played |> (card, cur_player)
         next_player = (cur_player + 1) `mod` 4
     in
         InRound new_board _stack (TrickInfo next_player new_played scores bool)
+play _ _ = error "world not InRound"
 
 -- rewriting this for servery stuff
 data RenderInfo = RenderInRound Board Info | Passing UZone PassDir -- | BetweenRounds
@@ -439,3 +445,7 @@ readRank r
         | otherwise = 0 
         -- temporary thing should correspond to card not in hand
 
+-- Patterns go at end of file since hlint can't parse them
+pattern Empty   <- (S.viewl -> S.EmptyL)
+pattern x :< xs <- (S.viewl -> x S.:< xs)
+-- pattern xs :> x <- (S.viewr -> xs S.:> x)
