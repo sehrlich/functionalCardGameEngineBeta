@@ -1,0 +1,37 @@
+* Klondike
+* Hearts
+Spades
+Pitch
+Bridge
+UpAndDownTheRiver
+Tractor
+Oma
+Uno
+President
+Fan Tan
+Oscar
+Pinochle
+Euchre
+Go_fish
+Liar's Poker
+Poker (variants)
+Cribbage
+Tens/Rummy Variants
+Dominion
+Hearthstone
+Open-face Chinese poker/ two-person Poker war
+Free Cell
+Spider Solitaire
+Calculation
+Powers of ERGL ???
+
+Dream Quest
+
+Real-time
+Figgie
+
+
+
+-----
+board games
+9 mens morris (switch to server architecture, make MCTS work)
