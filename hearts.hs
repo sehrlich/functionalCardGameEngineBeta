@@ -183,6 +183,7 @@ gameLoop players (PassingPhase deal passDir)
                  validate candCardSet
                 -- validate $ client (StcGetPassSelection (deal `S.index` i) passDir)
             validate (CtsPassSelection toPass) = return toPass
+            -- TODO would prefer this to be non-stupid
             validate _ = error "need to make this try-catch or somesuch"
             rotate (x :< xs) =  xs |> x
             rotate (Empty) =  S.empty
@@ -207,6 +208,7 @@ gameLoop players (PassingPhase deal passDir)
                 -- World when in middle of round
 gameLoop _players (InRound _board [] _info) 
     = error "stack is empty" 
+    -- Fix this case
 gameLoop players (InRound board (now:on_stack) info) 
     = do
     render (RenderInRound board info)
@@ -247,16 +249,16 @@ curPlayer :: Info -> Int
 curPlayer (TrickInfo p _ _ _) = p
 
 computeWinner :: Info -> (PlayerID, Scores, Bool)
---computeWinner (TrickInfo holds2c played allZeros _) | S.null played = (holds2c, allZeros, False)
 computeWinner (TrickInfo _ played@((lead,_) :< _) scores broken) =
     let lead_suit = _suit lead
         (_best_card, winner) = F.maximumBy (cmpWith lead_suit) played
         pts (Card s r) | s==Hearts = 1
                        | r==12 && s==Spades = 13
                        | otherwise = 0
-        trickVal = F.sum $ fmap (pts.fst) played 
-        new_scores = S.adjust (+ trickVal) winner scores
-        broken' = broken -- || heartsInThisTrick
+        trickVal    = F.sum $ fmap (pts.fst) played 
+        new_scores  = S.adjust (+ trickVal) winner scores
+        isHeart c   = _suit c == Hearts
+        broken'     = broken || F.foldr ((||).isHeart.fst) False played
     in
         (winner, new_scores, broken')
     where cmpWith s (Card s1 r1,_) (Card s2 r2, _) 
@@ -285,8 +287,8 @@ render (RenderInRound board info@(TrickInfo _ played scores _)) = do
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
+    renderPlay played 
     renderBoard board $ curPlayer info
-    putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show . fst) played)
     mapM_ showScore [0..3]
     where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
           showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
@@ -302,6 +304,9 @@ renderBoard board activePlayer = mapM_ printHand [0..3]
 
 renderHand :: UZone -> IO ()
 renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
+
+renderPlay :: S.Seq (Card, PlayerID) -> IO ()
+renderPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show . fst) played)
 
 data Message = ClientToServer | ServerToClient deriving (Generic, Typeable)
 
@@ -326,16 +331,16 @@ aiclient (StcGetPassSelection hand _passDir) = do
 
 aiclient StcGameOver = return CtsDisconnect
 
-{- Client Side code
- - actual mechanism of splitting it as thread to be determined
- -
- - Should split some validation stuff out so that
- - it is accessible to both server and client --
- - my client should always send valid input
- - if server receives bad messages, it should check them
- -
- - Also, rendering should go here
- -}
+{-- Client Side code
+ -- actual mechanism of splitting it as thread to be determined
+ --
+ -- Should split some validation stuff out so that
+ -- it is accessible to both server and client --
+ -- my client should always send valid input
+ -- if server receives bad messages, it should check them
+ --
+ -- Also, rendering should go here
+ --}
 
 client :: ServerToClient -> IO ClientToServer 
 client (StcGetMove hand info) = do
@@ -373,11 +378,9 @@ isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
         isGarbage c     = _suit c == Hearts || c == Card {_suit = Spades, _rank = 12}
     in
     playIf is2c && 
-    (
         if on_lead 
         then not (isGarbage card || heartsBroken || checkHandHasNo (not . isGarbage))
         else playIf matchesLead && not (isGarbage card && isFirstTrick)
-    )
     -- note: counting on lazy evaluation to not evaluate matches_lead if played is empty
     -- this runs into a problem when played is null, hearts are not yet broken, and someone
     -- tries to lead hearts
