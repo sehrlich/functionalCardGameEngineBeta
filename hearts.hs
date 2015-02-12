@@ -140,6 +140,7 @@ gameLoop _players (RoundOver scores)
                 putStrLn $ "Player " ++ show p ++ " shot the moon"
                 return $ fmap (26-) scores
     -- send info to clients
+    render (BetweenRounds scores)
     return $ RoundOver scores'
 
 gameLoop _players (GameOver scores) 
@@ -278,7 +279,7 @@ play card (InRound board _stack (TrickInfo cur_player played scores bool)) =
 play _ _ = error "world not InRound"
 
 -- rewriting this for servery stuff
-data RenderInfo = RenderInRound Board Info | Passing UZone PassDir -- | BetweenRounds
+data RenderInfo = RenderInRound Board Info | Passing UZone PassDir | BetweenRounds Scores
 render :: RenderInfo -> IO ()
 
 --render :: Board -> Info -> IO ()
@@ -289,11 +290,16 @@ render (RenderInRound board info@(TrickInfo _ played scores _)) = do
 
     renderPlay played 
     renderBoard board $ curPlayer info
-    mapM_ showScore [0..3]
-    where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
-          showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
+    renderScores scores
 
 render (Passing hand _passDir) = renderHand hand
+
+render (BetweenRounds scores) = renderScores scores
+
+renderScores :: Scores -> IO ()
+renderScores scores = mapM_ showScore [0..3]
+    where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
+          showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
 
 renderBoard :: Board -> Int -> IO ()
 renderBoard board activePlayer = mapM_ printHand [0..3]
