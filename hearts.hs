@@ -76,7 +76,7 @@ data World = InRound Board Stack Info
             deriving (Generic, Typeable)
 type Stack = [Effect]
 type Scores = S.Seq Int
-
+type Trick = S.Seq (Card, PlayerID)
 type Board = S.Seq UZone
 
 stdDeck :: [Card]
@@ -212,7 +212,7 @@ gameLoop _players (InRound _board [] _info)
     -- Fix this case
 gameLoop players (InRound board (now:on_stack) info) 
     = do
-    render (RenderInRound board info)
+    render (RenderServerState board info)
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty
     case now of 
@@ -279,11 +279,23 @@ play card (InRound board _stack (TrickInfo cur_player played scores bool)) =
 play _ _ = error "world not InRound"
 
 -- rewriting this for servery stuff
-data RenderInfo = RenderInRound Board Info | Passing UZone PassDir | BetweenRounds Scores
+data RenderInfo = RenderServerState Board Info 
+                | Passing UZone PassDir 
+                | BetweenRounds Scores 
+                | RenderInRound UZone Trick Scores
 render :: RenderInfo -> IO ()
 
 --render :: Board -> Info -> IO ()
-render (RenderInRound board info@(TrickInfo _ played scores _)) = do 
+render (RenderInRound hand played scores) = do 
+    -- if we should only be rendering the current players hand then do some checking
+    -- the following clears the screen
+    putStrLn "\ESC[H\ESC[2J"
+
+    renderPlay played 
+    renderHand hand
+    renderScores scores
+
+render (RenderServerState board info@(TrickInfo _ played scores _)) = do 
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
@@ -311,7 +323,7 @@ renderBoard board activePlayer = mapM_ printHand [0..3]
 renderHand :: UZone -> IO ()
 renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
 
-renderPlay :: S.Seq (Card, PlayerID) -> IO ()
+renderPlay :: Trick -> IO ()
 renderPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show . fst) played)
 
 data Message = ClientToServer | ServerToClient deriving (Generic, Typeable)
