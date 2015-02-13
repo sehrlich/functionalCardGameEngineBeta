@@ -5,6 +5,8 @@
 -- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 import PlayingCards
+import HeartsCommon
+import HeartsClient
 -- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
 import Data.Sequence ((|>), (<|)) -- , ViewR ((:>)), ViewL ((:<)))
@@ -12,7 +14,7 @@ import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 import Control.Monad (void, forever) -- liftM, unless
 import Data.Maybe (fromJust)
-import Data.List (intercalate)
+import Data.List (intercalate) -- colorize
 
 -- for serialization
 import Data.Typeable
@@ -32,36 +34,8 @@ import Control.Concurrent.STM.TMVar
 -- and importing all of sequence
 
 
-type PlayerID = Int
 type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
 
-
-colorize :: [Int] -> String -> String
-colorize options str = "\ESC[" 
-                        ++ intercalate ";" [show i | i <-options] 
-                        ++ "m" ++ str ++ "\ESC[0m"
-
-type UZone = Z.Set Card
-
-data Effect = Effect (World -> World) 
-                | GetInput 
-                | NewTrick
-                | ComputeWinner
-
-data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Generic, Typeable)
-data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores Bool
-            deriving (Generic, Typeable)
-data World = InRound Board Stack Info
-            | StartGame 
-            | StartRound PassDir Scores
-            | PassingPhase Board PassDir
-            | RoundOver Scores
-            | GameOver Scores
-            deriving (Generic, Typeable)
-type Stack = [Effect]
-type Scores = S.Seq Int
-type Trick = S.Seq (Card, PlayerID)
-type Board = S.Seq UZone
 
 {- Server code
  - some of this should be farmed out into new threads 
@@ -214,6 +188,8 @@ msgClient (inbox, outbox, _) message
 curPlayer :: Info -> Int
 curPlayer (TrickInfo p _ _ _) = p
 
+-- should move the standard card game trick into Playing cards (and call it)
+-- and locally do stuff related to hearts breaking, etc.
 computeWinner :: Info -> (PlayerID, Scores, Bool)
 computeWinner (TrickInfo _ played@((lead,_) :< _) scores broken) =
     let lead_suit = _suit lead
@@ -291,163 +267,12 @@ renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
 renderPlay :: Trick -> IO ()
 renderPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show . fst) played)
 
-data Message = ClientToServer | ServerToClient deriving (Generic, Typeable)
 
-data ClientToServer = CtsMove Card 
-                    | CtsPassSelection (Z.Set Card)
-                    | CtsDisconnect
-data ServerToClient = StcGetMove UZone Info 
-                    | StcGetPassSelection UZone PassDir
-                    | StcGameOver
+colorize :: [Int] -> String -> String
+colorize options str = "\ESC[" 
+                        ++ intercalate ";" [show i | i <-options] 
+                        ++ "m" ++ str ++ "\ESC[0m"
 
-{- The trivial ai -}
-{- should replace with random choice -}
-aiclient :: ServerToClient -> IO ClientToServer 
-aiclient (StcGetMove hand info) = 
-    case F.find (isValidPlay hand info) $ Z.toList hand of 
-        Nothing   -> error "apparently cannot play card"
-        Just card -> return $ CtsMove card
-
-aiclient (StcGetPassSelection hand _passDir) = do
-    let cardSet = Z.fromList $ take 3 $ Z.toList hand
-    return $ CtsPassSelection cardSet
-
-aiclient StcGameOver = return CtsDisconnect
-
-{-- Client Side code
- -- actual mechanism of splitting it as thread to be determined
- --
- -- Should split some validation stuff out so that
- -- it is accessible to both server and client --
- -- my client should always send valid input
- -- if server receives bad messages, it should check them
- --
- -- Also, rendering should go here
- --}
-
-client :: ServerToClient -> IO ClientToServer 
-client (StcGetMove hand info) = do
-    card <- getMove hand info
-    return $ CtsMove card
-
-client (StcGetPassSelection hand passDir) = do
-   render $ Passing hand passDir
-   cardSet <- getMultiCards 3 hand
-   -- do client validation here
-   return $ CtsPassSelection cardSet
-
-client StcGameOver = return CtsDisconnect
-
-getMove :: UZone -> Info -> IO Card
-getMove hand info = do
-    card <- getCardFromHand hand
-    if isValidPlay hand info card
-    then return card
-    else do 
-        putStrLn "Illegal move: must follow suit"
-        getMove hand info
---    where TrickInfo cur_player played _scores = info 
-
--- This seems like an ideal thing to practice using quickCheck with
--- namely, no matter what the trick is, should always have at least one valid play
-isValidPlay :: UZone -> Info -> Card -> Bool
-isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
-    let checkHandHasNo p    = not $ Z.foldr ((||).p) False hand
-        playIf p            = p card || checkHandHasNo p
-        on_lead         = S.null played
-        isFirstTrick    = is2c $ fst $ S.index played 0
-        matchesLead c   = _suit c == _suit (fst $ S.index played 0)
-        is2c c          = c == Card {_suit = Clubs, _rank = 2}
-        isGarbage c     = _suit c == Hearts || c == Card {_suit = Spades, _rank = 12}
-    in
-    playIf is2c && 
-        if on_lead 
-        then not (isGarbage card || heartsBroken || checkHandHasNo (not . isGarbage))
-        else playIf matchesLead && not (isGarbage card && isFirstTrick)
-    -- note: counting on lazy evaluation to not evaluate matches_lead if played is empty
-    -- this runs into a problem when played is null, hearts are not yet broken, and someone
-    -- tries to lead hearts
-    -- playIf is2c && 
-    -- (
-    --     (on_lead 
-    --     && (not $ isGarbage card || heartsBroken || checkHandHasNo isGarbage)
-    --     )
-    -- || 
-    --     (
-    --     not on_lead
-    --     && playIf matches_lead 
-    --     && not (isGarbage card && isFirstTrick)
-    --     )
-    -- )
-
-getMultiCards :: Int -> UZone -> IO (Z.Set Card)
-getMultiCards 0 _ = return Z.empty
---getMultiCards _ empty = return Z.empty
-getMultiCards i hand = do
-    card <- getCardFromHand hand
-    others <- getMultiCards (i-1) (Z.delete card hand)
-    return $ card `Z.insert` others
-
-
-getCardFromHand :: UZone -> IO Card
-getCardFromHand hand = do
-    -- renderHand hand
-    card <- getInput
-    if card `Z.member` hand
-    then return card
-    else do
-        putStrLn "Error: Card not in hand"
-        getCardFromHand hand
-
-getInput :: IO Card
-getInput = do
-    putStrLn "Choose Card: " 
-    -- for hearts players only choices in the play are which card to play 
-    -- We'll check that it's a legal play before constructing the effect 
-    mv <- getLine
-    case parseMove mv of
-        Invalid -> do 
-                    putStrLn "Could not interpret move!"
-                    getInput
-        Valid c -> return c
-
-data MoveType = Invalid | Valid Card
-{- Try to parse it as a card
- - if that fails, try to parse it as asking for a meta option
- - help, quit, valid_play_list, etc.
- - else give up and return invalid
- -}
-parseMove :: String -> MoveType
-parseMove [r,s] = Valid (Card (readSuit s) (readRank r))
-parseMove _ = Invalid
-
-readSuit :: Char -> Suit
-readSuit s = case s of 
-        'c' -> Clubs
-        'C' -> Clubs
-        'd' -> Diamonds
-        'D' -> Diamonds
-        'h' -> Hearts
-        'H' -> Hearts
-        's' -> Spades
-        'S' -> Spades
-        _ -> error "Unrecognized suit"
-
-readRank :: Char -> Int
-readRank r 
-        | r=='A' = 14
-        | r=='a' = 14
-        | r=='K' = 13
-        | r=='k' = 13
-        | r=='Q' = 12
-        | r=='q' = 12
-        | r=='J' = 11
-        | r=='j' = 11
-        | r=='T' = 10
-        | r=='t' = 10
-        | r `elem` "23456789" = read [r] ::Int
-        | otherwise = 0 
-        -- temporary thing should correspond to card not in hand
 
 -- Patterns go at end of file since hlint can't parse them
 pattern Empty   <- (S.viewl -> S.EmptyL)

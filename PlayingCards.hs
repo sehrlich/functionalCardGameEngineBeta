@@ -3,7 +3,10 @@ module PlayingCards
       -- Types
       Suit(..)
     , Card(..)
-      -- Utility
+    -- Utility
+    , readSuit
+    , readRank
+    -- deck
     , stdDeck
     , shuffle
     -- trick taking utilities
@@ -28,6 +31,33 @@ instance Show Card
                  Diamonds    -> ([1,31,47], "D")
             in colorize col $ ("-A23456789TJQKA"!!r) : pic
 
+readSuit :: Char -> Suit
+readSuit s = case s of 
+        'c' -> Clubs
+        'C' -> Clubs
+        'd' -> Diamonds
+        'D' -> Diamonds
+        'h' -> Hearts
+        'H' -> Hearts
+        's' -> Spades
+        'S' -> Spades
+        _ -> error "Unrecognized suit"
+
+readRank :: Char -> Int
+readRank r 
+        | r=='A' = 14
+        | r=='a' = 14
+        | r=='K' = 13
+        | r=='k' = 13
+        | r=='Q' = 12
+        | r=='q' = 12
+        | r=='J' = 11
+        | r=='j' = 11
+        | r=='T' = 10
+        | r=='t' = 10
+        | r `elem` "23456789" = read [r] ::Int
+        | otherwise = 0 
+        -- temporary thing should correspond to card not in hand
 colorize :: [Int] -> String -> String
 colorize options str = "\ESC[" 
                         ++ intercalate ";" [show i | i <-options] 
