@@ -4,16 +4,15 @@
 -- {-# LANGUAGE TemplateHaskell #-} -- make lenses maybe
 -- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
+import PlayingCards
 -- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
 import Data.Sequence ((|>), (<|)) -- , ViewR ((:>)), ViewL ((:<)))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
-import Control.Monad (forM, void, forever) -- liftM, unless
-import Data.Array.IO
+import Control.Monad (void, forever) -- liftM, unless
 import Data.Maybe (fromJust)
 import Data.List (intercalate)
-import System.Random
 
 -- for serialization
 import Data.Typeable
@@ -36,26 +35,11 @@ import Control.Concurrent.STM.TMVar
 type PlayerID = Int
 type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
 
-data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord, Generic, Typeable)
-data Card = Card {_suit::Suit, _rank::Int} deriving (Eq, Ord, Generic, Typeable) --Show
 
 colorize :: [Int] -> String -> String
 colorize options str = "\ESC[" 
                         ++ intercalate ";" [show i | i <-options] 
                         ++ "m" ++ str ++ "\ESC[0m"
-
-_cardback :: String
-_cardback = colorize [104] "()"
-
-instance Show Card 
-    where show (Card s r) 
-            = 
-            let (col,pic) = case s of
-                 Clubs       -> ([1,30,47], "C")
-                 Spades      -> ([1,30,47], "S")
-                 Hearts      -> ([1,31,47], "H")
-                 Diamonds    -> ([1,31,47], "D")
-            in colorize col $ ("-A23456789TJQKA"!!r) : pic
 
 type UZone = Z.Set Card
 
@@ -78,25 +62,6 @@ type Stack = [Effect]
 type Scores = S.Seq Int
 type Trick = S.Seq (Card, PlayerID)
 type Board = S.Seq UZone
-
-stdDeck :: [Card]
----- setting aces at 14
-stdDeck = [Card s r | r <- [2..14], s <- [Clubs, Hearts, Spades, Diamonds]]
-
-shuffle :: [a] -> IO [a]
--- shuffle x = return x
-shuffle xs = do
-        ar <- newArr n xs
-        forM [1..n] $ \i -> do
-            j  <- randomRIO (i,n)
-            vi <- readArray ar i
-            vj <- readArray ar j
-            writeArray ar j vi
-            return vj
-  where
-    n = length xs
-    newArr :: Int -> [a] -> IO (IOArray Int a)
-    newArr n' =  newListArray (1,n') 
 
 {- Server code
  - some of this should be farmed out into new threads 
