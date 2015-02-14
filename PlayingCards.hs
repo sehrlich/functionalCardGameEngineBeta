@@ -1,11 +1,9 @@
 module PlayingCards 
-    (
-      -- Types
+    ( -- Types
       Suit(..)
     , Card(..)
     -- Utility
-    , readSuit
-    , readRank
+    , readCard
     -- deck
     , stdDeck
     , shuffle
@@ -58,6 +56,11 @@ readRank r
         | r `elem` "23456789" = read [r] ::Int
         | otherwise = 0 
         -- temporary thing should correspond to card not in hand
+
+readCard :: String -> Maybe Card
+readCard [r,s] = Just (Card (readSuit s) (readRank r))
+readCard _     = Nothing
+
 colorize :: [Int] -> String -> String
 colorize options str = "\ESC[" 
                         ++ intercalate ";" [show i | i <-options] 

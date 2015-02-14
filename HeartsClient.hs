@@ -68,21 +68,13 @@ getInput = do
     -- for hearts players only choices in the play are which card to play 
     -- We'll check that it's a legal play before constructing the effect 
     mv <- getLine
-    case parseMove mv of
-        Invalid -> do 
+    -- TODO: try parsing meta options and so forth too
+    case readCard mv of
+        Nothing -> do 
                     putStrLn "Could not interpret move!"
                     getInput
-        Valid c -> return c
+        Just c -> return c
 
-data MoveType = Invalid | Valid Card
-{- Try to parse it as a card
- - if that fails, try to parse it as asking for a meta option
- - help, quit, valid_play_list, etc.
- - else give up and return invalid
- -}
-parseMove :: String -> MoveType
-parseMove [r,s] = Valid (Card (readSuit s) (readRank r))
-parseMove _ = Invalid
 {- The trivial ai -}
 {- should replace with random choice -}
 aiclient :: ServerToClient -> IO ClientToServer 
