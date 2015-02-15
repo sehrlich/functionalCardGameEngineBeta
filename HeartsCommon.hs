@@ -39,7 +39,7 @@ data World = InRound Board Stack Info
 type Stack = [Effect]
 type Scores = S.Seq Int
 type PlayerID = Int
-type Trick = S.Seq (Card, PlayerID)
+--type Trick = S.Seq (Card, PlayerID)
 type Board = S.Seq UZone
 data Message = ClientToServer | ServerToClient -- deriving (Generic, Typeable)
 

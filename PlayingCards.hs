@@ -2,6 +2,8 @@ module PlayingCards
     ( -- Types
       Suit(..)
     , Card(..)
+    , Trick
+    , Hand
     -- Utility
     , readCard
     -- deck
@@ -16,8 +18,16 @@ import Control.Monad (forM)
 import Data.Array.IO
 import System.Random
 
+import qualified Data.Foldable as F
+import qualified Data.Sequence as Seq
+import Data.Sequence (Seq)
+import qualified Data.Set as Set
+import Data.Set (Set)
+
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord)
 data Card = Card {_suit::Suit, _rank::Int} deriving (Eq, Ord) -- maybe later (Generic, Typeable) --Show
+type Trick = Seq Card
+type Hand = Set Card
 
 instance Show Card 
     where show (Card s r) 
@@ -68,6 +78,27 @@ colorize options str = "\ESC["
 
 _cardback :: String
 _cardback = colorize [104] "()"
+
+followsSuit :: Hand -> Trick -> Card -> Bool
+followsSuit hand played card = 
+    let on_lead         = Seq.null played  
+        matchesLead c   = _suit c == _suit (Seq.index played 0)
+        playIf p        = p card || checkHandHasNo p
+        checkHandHasNo p    = not $ F.foldr ((||).p) False hand
+    in
+    on_lead || playIf matchesLead
+
+trickWinner :: Hand -> Trick -> Maybe Suit -> Int
+trickWinner hand played _trump =
+    let lead_suit = _suit $ Seq.index played 0
+        (winner, _best_card) = F.maximumBy (cmpWith lead_suit) $ Seq.mapWithIndex (,) played 
+    in
+    winner
+    -- TODO check trump
+    where cmpWith s (_,Card s1 r1) (_,Card s2 r2) 
+            | s2 == s1  = compare r1 r2 
+            | s1 == s   = GT
+            | otherwise = LT
 
 stdDeck :: [Card]
 ---- setting aces at 14

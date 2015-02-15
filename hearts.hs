@@ -236,12 +236,12 @@ render (RenderInRound hand played scores) = do
     renderHand hand
     renderScores scores
 
-render (RenderServerState board info@(TrickInfo _ played scores _)) = do 
+render (RenderServerState board info@(TrickInfo _ _played scores _)) = do 
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    renderPlay played 
+    --renderPlay played 
     renderBoard board $ curPlayer info
     renderScores scores
 
@@ -265,7 +265,7 @@ renderHand :: UZone -> IO ()
 renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
 
 renderPlay :: Trick -> IO ()
-renderPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show . fst) played)
+renderPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show ) played)
 
 
 colorize :: [Int] -> String -> String
