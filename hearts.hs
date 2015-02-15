@@ -191,29 +191,22 @@ curPlayer (TrickInfo p _ _ _) = p
 -- should move the standard card game trick into Playing cards (and call it)
 -- and locally do stuff related to hearts breaking, etc.
 computeWinner :: Info -> (PlayerID, Scores, Bool)
-computeWinner (TrickInfo _ played@((lead,_) :< _) scores broken) =
-    let lead_suit = _suit lead
-        (_best_card, winner) = F.maximumBy (cmpWith lead_suit) played
+computeWinner (TrickInfo _ played scores broken) =
+    let winner = trickWinner played Nothing
         pts (Card s r) | s==Hearts = 1
                        | r==12 && s==Spades = 13
                        | otherwise = 0
-        trickVal    = F.sum $ fmap (pts.fst) played 
+        trickVal    = F.sum $ fmap pts played 
         new_scores  = S.adjust (+ trickVal) winner scores
         isHeart c   = _suit c == Hearts
-        broken'     = broken || F.foldr ((||).isHeart.fst) False played
+        broken'     = broken || F.foldr ((||).isHeart) False played
     in
         (winner, new_scores, broken')
-    where cmpWith s (Card s1 r1,_) (Card s2 r2, _) 
-            | s2 == s1  = compare r1 r2 
-            | s1 == s   = GT
-            | otherwise = LT
-computeWinner _ = error "empty trick"
-            
 
 play :: Card -> World -> World
 play card (InRound board _stack (TrickInfo cur_player played scores bool)) = 
     let new_board = S.adjust (Z.delete card) cur_player board 
-        new_played = played |> (card, cur_player)
+        new_played = played |> card
         next_player = (cur_player + 1) `mod` 4
     in
         InRound new_board _stack (TrickInfo next_player new_played scores bool)

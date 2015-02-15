@@ -10,10 +10,11 @@ module PlayingCards
     , stdDeck
     , shuffle
     -- trick taking utilities
-    -- computeWinner
-    -- followsLead
+    , followsSuit
+    , trickWinner
     ) where
 import Data.List (intercalate)
+import Data.Function (on, flip)
 import Control.Monad (forM)
 import Data.Array.IO
 import System.Random
@@ -88,17 +89,15 @@ followsSuit hand played card =
     in
     on_lead || playIf matchesLead
 
-trickWinner :: Hand -> Trick -> Maybe Suit -> Int
-trickWinner hand played _trump =
+trickWinner :: Trick -> Maybe Suit -> Int
+trickWinner played trump =
     let lead_suit = _suit $ Seq.index played 0
-        (winner, _best_card) = F.maximumBy (cmpWith lead_suit) $ Seq.mapWithIndex (,) played 
+        (winner, _best_card_val) = F.maximumBy (compare `on` snd) $ flip Seq.mapWithIndex played $ (. (cardVal lead_suit trump)) . (,)
     in
     winner
-    -- TODO check trump
-    where cmpWith s (_,Card s1 r1) (_,Card s2 r2) 
-            | s2 == s1  = compare r1 r2 
-            | s1 == s   = GT
-            | otherwise = LT
+    where cardVal lead maybeTrump (Card s1 r1) 
+             = r1 + (if s1==lead then 15 else 0) 
+                + (if Just s1 == maybeTrump then 50 else 0)
 
 stdDeck :: [Card]
 ---- setting aces at 14

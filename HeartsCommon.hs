@@ -6,7 +6,6 @@ module HeartsCommon
     , World(..)
     -- type synonyms
     , Scores
-    , Trick
     , PlayerID
     , Board
     -- Game Logic
@@ -29,7 +28,7 @@ data Effect = Effect (World -> World)
                 | ComputeWinner
 
 data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq)
-data Info = TrickInfo PlayerID (S.Seq (Card,PlayerID)) Scores Bool
+data Info = TrickInfo PlayerID Trick Scores Bool
 data World = InRound Board Stack Info
             | StartGame 
             | StartRound PassDir Scores
@@ -57,8 +56,8 @@ isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
     let checkHandHasNo p    = not $ Z.foldr ((||).p) False hand
         playIf p            = p card || checkHandHasNo p
         on_lead         = S.null played
-        isFirstTrick    = is2c $ fst $ S.index played 0
-        matchesLead c   = _suit c == _suit (fst $ S.index played 0)
+        isFirstTrick    = is2c $ S.index played 0
+        matchesLead c   = _suit c == _suit (S.index played 0)
         is2c c          = c == Card {_suit = Clubs, _rank = 2}
         isGarbage c     = _suit c == Hearts || c == Card {_suit = Spades, _rank = 12}
     in
