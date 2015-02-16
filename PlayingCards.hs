@@ -7,8 +7,13 @@ module PlayingCards
     -- Utility
     , readCard
     -- deck
-    , stdDeck
-    , shuffle
+    , shuffledDeck
+    , draw
+    , drawExactly
+    , orderPile
+    , unorderPile
+    -- , stdDeck
+    -- , shuffle
     -- trick taking utilities
     , followsSuit
     , trickWinner
@@ -27,8 +32,10 @@ import Data.Set (Set)
 
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord)
 data Card = Card {_suit::Suit, _rank::Int} deriving (Eq, Ord) -- maybe later (Generic, Typeable) --Show
-type Trick = Seq Card
-type Hand = Set Card
+type Trick   = Seq Card -- ordered
+type OrdPile = Seq Card -- ordered
+type Pile = Set Card -- unordered
+type Hand = Pile
 
 instance Show Card 
     where show (Card s r) 
@@ -80,6 +87,8 @@ colorize options str = "\ESC["
 _cardback :: String
 _cardback = colorize [104] "()"
 
+
+{--| Checks that the card played follows suit if able --}
 followsSuit :: Hand -> Trick -> Card -> Bool
 followsSuit hand played card = 
     let on_lead         = Seq.null played  
@@ -89,6 +98,7 @@ followsSuit hand played card =
     in
     on_lead || playIf matchesLead
 
+{--| Computes the index of the card that won the trick (maybe trump) --}
 trickWinner :: Trick -> Maybe Suit -> Int
 trickWinner played trump =
     let lead_suit = _suit $ Seq.index played 0
@@ -98,6 +108,28 @@ trickWinner played trump =
     where cardVal lead maybeTrump (Card s1 r1) 
              = r1 + (if s1==lead then 15 else 0) 
                 + (if Just s1 == maybeTrump then 50 else 0)
+
+orderPile :: Pile -> OrdPile
+orderPile pile = Seq.fromList $ Set.toList pile
+unorderPile :: OrdPile -> Pile
+unorderPile pile = Set.fromList $ F.toList pile
+{--| Randomly draw n cards from pile (until pile is empty), return the drawn stack and the reduced pile --}
+draw :: Int -> Pile -> (Pile, Pile)
+draw n deck = undefined
+--    if n <= length deck
+--    then Just $ Seq.splitAt n deck
+--    else Nothing
+
+{--| Draw precisely n cards from pile and return the drawn stack and the reduced pile or fail with Nothing --}
+drawExactly :: Int -> OrdPile -> Maybe (OrdPile, OrdPile)
+drawExactly n deck =
+    if n <= Seq.length deck
+    then Just $ Seq.splitAt n deck
+    else Nothing
+
+-- switch at some point to using RVars
+shuffledDeck :: IO [Card]
+shuffledDeck = shuffle stdDeck
 
 stdDeck :: [Card]
 ---- setting aces at 14

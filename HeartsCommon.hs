@@ -28,6 +28,8 @@ data Effect = Effect (World -> World)
                 | ComputeWinner
 
 data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq)
+
+-- curPlayer, played so far, scores this round, hearts broken
 data Info = TrickInfo PlayerID Trick Scores Bool
 data World = InRound Board Stack Info
             | StartGame 

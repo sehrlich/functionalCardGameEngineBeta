@@ -63,6 +63,12 @@ main = do
         p3 <- constructPlayer aiclient
         void $ gameLoop [p0,p1,p2,p3] StartGame
 
+msgClient :: Player -> ServerToClient -> IO ClientToServer
+msgClient (inbox, outbox, _) message
+    = do
+    atomically $ putTMVar inbox message
+    atomically $ takeTMVar outbox
+
 gameLoop :: [Player] -> World -> IO World
 gameLoop players StartGame = gameLoop players $ StartRound PassLeft $ S.fromList [0,0,0,0]
 
@@ -91,14 +97,8 @@ gameLoop _players (GameOver scores)
 -- World controlling events in a round
 gameLoop players (StartRound passDir scores) 
     = do
-    deck <- shuffle stdDeck
-    let h0 = Z.fromList $ take 13 deck
-    let h1 = Z.fromList $ take 13 $ drop 13 deck
-    let h2 = Z.fromList $ take 13 $ drop 26 deck
-    let h3 = Z.fromList $ take 13 $ drop 39 deck
-    let deal = S.fromList [h0,h1,h2,h3]
-    -- distribute deck to player hands 
-    -- play round 
+    deck <- shuffledDeck
+    let deal = fmap (unorderPile) $ S.unfoldr (drawExactly 13) $ S.fromList deck
     RoundOver round_scores <- gameLoop players $ PassingPhase deal passDir
     
     let new_scores = S.zipWith (+) round_scores scores
@@ -178,12 +178,6 @@ gameLoop players (InRound board (now:on_stack) info)
                   validate _ = error "recieved wrong type of message"
         Effect move ->
             gameLoop players $ move world'
-
-msgClient :: Player -> ServerToClient -> IO ClientToServer
-msgClient (inbox, outbox, _) message
-    = do
-    atomically $ putTMVar inbox message
-    atomically $ takeTMVar outbox
 
 curPlayer :: Info -> Int
 curPlayer (TrickInfo p _ _ _) = p
