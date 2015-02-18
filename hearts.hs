@@ -182,8 +182,6 @@ gameLoop players (InRound board (now:on_stack) info)
 curPlayer :: Info -> Int
 curPlayer (TrickInfo p _ _ _) = p
 
--- should move the standard card game trick into Playing cards (and call it)
--- and locally do stuff related to hearts breaking, etc.
 computeWinner :: Info -> (PlayerID, Scores, Bool)
 computeWinner (TrickInfo _ played scores broken) =
     let winner = trickWinner played Nothing
@@ -208,9 +206,9 @@ play _ _ = error "world not InRound"
 
 -- rewriting this for servery stuff
 data RenderInfo = RenderServerState Board Info 
-                | Passing UZone PassDir 
+                | Passing Hand PassDir 
                 | BetweenRounds Scores 
-                | RenderInRound UZone Trick Scores
+                | RenderInRound Hand Trick Scores
 render :: RenderInfo -> IO ()
 
 --render :: Board -> Info -> IO ()
@@ -248,7 +246,7 @@ renderBoard board activePlayer = mapM_ printHand [0..3]
                         putStr " "
                         renderHand $ board `S.index` i
 
-renderHand :: UZone -> IO ()
+renderHand :: Hand -> IO ()
 renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
 
 renderPlay :: Trick -> IO ()

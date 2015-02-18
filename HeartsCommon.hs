@@ -1,6 +1,5 @@
 module HeartsCommon
-    ( UZone
-    , Info(..)
+    ( Info(..)
     , Effect(..)
     , PassDir(..)
     , World(..)
@@ -20,7 +19,7 @@ import qualified Data.Set as Z
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 
-type UZone = Z.Set Card
+-- type UZone = Z.Set Card
 
 data Effect = Effect (World -> World) 
                 | GetInput 
@@ -41,19 +40,19 @@ type Stack = [Effect]
 type Scores = S.Seq Int
 type PlayerID = Int
 --type Trick = S.Seq (Card, PlayerID)
-type Board = S.Seq UZone
+type Board = S.Seq Hand
 data Message = ClientToServer | ServerToClient -- deriving (Generic, Typeable)
 
 data ClientToServer = CtsMove Card 
                     | CtsPassSelection (Z.Set Card)
                     | CtsDisconnect
-data ServerToClient = StcGetMove UZone Info 
-                    | StcGetPassSelection UZone PassDir
+data ServerToClient = StcGetMove Hand Info 
+                    | StcGetPassSelection Hand PassDir
                     | StcGameOver
 
 -- This seems like an ideal thing to practice using quickCheck with
 -- namely, no matter what the trick is, should always have at least one valid play
-isValidPlay :: UZone -> Info -> Card -> Bool
+isValidPlay :: Hand -> Info -> Card -> Bool
 isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
     let checkHandHasNo p    = not $ Z.foldr ((||).p) False hand
         playIf p            = p card || checkHandHasNo p

@@ -1,17 +1,12 @@
 I'll be writing a bunch of card game variants and hope to eventually factor out an engine that's useful for quickly implenting new card games
 Current Status
 
-Klondike works
-    needs front end
-Hearts does not work
-    front end
-    split into modules
-    needs server
-    maybe 
-        -- stop computing scores along the way and store tricks, then compute
-        at round end
-        -- ai can be better for testing (if can dodge trick, throw points. If
-        can't win big)
-        -- revamp info with lenses
-        -- quickCheck isValidPlay
-        -- make some sort of monady thing that ensures player input is always validated
+Front end
+Klondike
+Hearts maybe: 
+    -- rpc/servery thing, 
+    -- stop computing scores along the way and store tricks, then compute at round end
+    -- ai can be better for testing (if can dodge trick, throw points. If can't win big)
+    -- revamp info with lenses
+    -- quickCheck isValidPlay
+    -- make some sort of monady thing that ensures player input is always validated

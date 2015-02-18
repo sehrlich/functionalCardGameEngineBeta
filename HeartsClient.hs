@@ -34,7 +34,7 @@ client (StcGetPassSelection hand passDir) = do
 
 client StcGameOver = return CtsDisconnect
 
-getMove :: UZone -> Info -> IO Card
+getMove :: Hand -> Info -> IO Card
 getMove hand info = do
     card <- getCardFromHand hand
     if isValidPlay hand info card
@@ -43,7 +43,7 @@ getMove hand info = do
         putStrLn "Illegal move: must follow suit"
         getMove hand info
 
-getMultiCards :: Int -> UZone -> IO (Z.Set Card)
+getMultiCards :: Int -> Hand -> IO (Z.Set Card)
 getMultiCards 0 _ = return Z.empty
 --getMultiCards _ empty = return Z.empty
 getMultiCards i hand = do
@@ -52,7 +52,7 @@ getMultiCards i hand = do
     return $ card `Z.insert` others
 
 
-getCardFromHand :: UZone -> IO Card
+getCardFromHand :: Hand -> IO Card
 getCardFromHand hand = do
     -- renderHand hand
     card <- getInput
