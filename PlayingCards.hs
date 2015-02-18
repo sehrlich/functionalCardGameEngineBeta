@@ -15,7 +15,7 @@ module PlayingCards
     -- , stdDeck
     -- , shuffle
     -- trick taking utilities
-    , followsSuit
+    , followsSuit 
     , trickWinner
     ) where
 import Data.List (intercalate)
@@ -93,10 +93,8 @@ followsSuit :: Hand -> Trick -> Card -> Bool
 followsSuit hand played card = 
     let on_lead         = Seq.null played  
         matchesLead c   = _suit c == _suit (Seq.index played 0)
-        playIf p        = p card || checkHandHasNo p
-        checkHandHasNo p    = not $ F.foldr ((||).p) False hand
     in
-    on_lead || playIf matchesLead
+    on_lead || matchesLead card || F.all (not . matchesLead) hand
 
 {--| Computes the index of the card that won the trick (maybe trump) --}
 trickWinner :: Trick -> Maybe Suit -> Int

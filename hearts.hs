@@ -7,19 +7,18 @@
 import PlayingCards
 import HeartsCommon
 import HeartsClient
--- import qualified Data.Map.Strict as B -- for Zones
 import qualified Data.Set as Z
-import Data.Sequence ((|>), (<|)) -- , ViewR ((:>)), ViewL ((:<)))
+import Data.Sequence ((|>), (<|))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
-import Control.Monad (void, forever) -- liftM, unless
+import Control.Monad (void, forever)
 import Data.Maybe (fromJust)
 import Data.List (intercalate) -- colorize
 
 -- for serialization
-import Data.Typeable
-import Data.Binary
-import GHC.Generics (Generic)
+-- import Data.Typeable
+-- import Data.Binary
+-- import GHC.Generics (Generic)
 
 import Control.Concurrent
 import Control.Concurrent.STM
@@ -36,12 +35,6 @@ import Control.Concurrent.STM.TMVar
 
 type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
 
-
-{- Server code
- - some of this should be farmed out into new threads 
- -}
---port :: Int
---port = 44444
 constructPlayer :: (ServerToClient -> IO ClientToServer) -> IO Player
 constructPlayer respondTo 
     = do
@@ -185,7 +178,7 @@ curPlayer (TrickInfo p _ _ _) = p
 computeWinner :: Info -> (PlayerID, Scores, Bool)
 computeWinner (TrickInfo _ played scores broken) =
     let winner = trickWinner played Nothing
-        pts (Card s r) | s==Hearts = 1
+        pts (Card s r) | s==Hearts = 1 
                        | r==12 && s==Spades = 13
                        | otherwise = 0
         trickVal    = F.sum $ fmap pts played 

@@ -7,19 +7,18 @@ module HeartsCommon
     , Scores
     , PlayerID
     , Board
-    -- Game Logic
-    , isValidPlay
     -- Communication Related
     , Message(..)
     , ClientToServer(..)
     , ServerToClient(..)
+    -- Game Logic (client can access)
+    , isValidPlay
     ) where 
 import PlayingCards
-import qualified Data.Set as Z
+import Data.Set (Set)
+import Data.Sequence (Seq)
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
-
--- type UZone = Z.Set Card
 
 data Effect = Effect (World -> World) 
                 | GetInput 
@@ -37,14 +36,13 @@ data World = InRound Board Stack Info
             | RoundOver Scores
             | GameOver Scores
 type Stack = [Effect]
-type Scores = S.Seq Int
+type Scores = Seq Int
 type PlayerID = Int
---type Trick = S.Seq (Card, PlayerID)
-type Board = S.Seq Hand
-data Message = ClientToServer | ServerToClient -- deriving (Generic, Typeable)
+type Board = Seq Hand
 
+data Message = ClientToServer | ServerToClient 
 data ClientToServer = CtsMove Card 
-                    | CtsPassSelection (Z.Set Card)
+                    | CtsPassSelection (Set Card)
                     | CtsDisconnect
 data ServerToClient = StcGetMove Hand Info 
                     | StcGetPassSelection Hand PassDir
@@ -54,8 +52,7 @@ data ServerToClient = StcGetMove Hand Info
 -- namely, no matter what the trick is, should always have at least one valid play
 isValidPlay :: Hand -> Info -> Card -> Bool
 isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
-    let checkHandHasNo p    = not $ Z.foldr ((||).p) False hand
-        playIf p            = p card || checkHandHasNo p
+    let playIf p        = p card || F.all (not . p) hand
         on_lead         = S.null played
         isFirstTrick    = is2c $ S.index played 0
         matchesLead c   = _suit c == _suit (S.index played 0)
@@ -64,22 +61,5 @@ isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
     in
     playIf is2c && 
         if on_lead 
-        then not (isGarbage card || heartsBroken || checkHandHasNo (not . isGarbage))
+        then not (isGarbage card || heartsBroken || F.all isGarbage hand)
         else playIf matchesLead && not (isGarbage card && isFirstTrick)
-    -- note: counting on lazy evaluation to not evaluate matches_lead if played is empty
-    -- this runs into a problem when played is null, hearts are not yet broken, and someone
-    -- tries to lead hearts
-    -- playIf is2c && 
-    -- (
-    --     (on_lead 
-    --     && (not $ isGarbage card || heartsBroken || checkHandHasNo isGarbage)
-    --     )
-    -- || 
-    --     (
-    --     not on_lead
-    --     && playIf matches_lead 
-    --     && not (isGarbage card && isFirstTrick)
-    --     )
-    -- )
-
-
