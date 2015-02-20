@@ -11,7 +11,7 @@ import qualified Data.Set as Z
 import Data.Sequence ((|>), (<|))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
-import Control.Monad (void, forever)
+import Control.Monad (void)
 import Data.Maybe (fromJust)
 import Data.List (intercalate) -- colorize
 
@@ -33,20 +33,6 @@ import Control.Concurrent.STM.TMVar
 -- and importing all of sequence
 
 
-type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
-
-constructPlayer :: (ServerToClient -> IO ClientToServer) -> IO Player
-constructPlayer respondTo
-    = do
-    inbox  <- newEmptyTMVarIO -- :: (TMVar ServerToClient)
-    outbox <- newEmptyTMVarIO -- :: (TMVar ClientToServer)
-    thread <- forkIO $ playerThread inbox outbox
-    return (inbox, outbox, thread)
-
-    where playerThread inbox outbox = forever $ do
-            message <- atomically $ takeTMVar inbox
-            response <- respondTo message
-            atomically $ putTMVar outbox response
 
 main :: IO ()
 main = do

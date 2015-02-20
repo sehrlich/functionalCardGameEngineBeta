@@ -1,6 +1,7 @@
 module HeartsClient
-    (
-      client
+    ( constructGUIPlayer
+    , constructPlayer
+    , client
     , aiclient
     )
     where
@@ -9,7 +10,31 @@ import PlayingCards
 import qualified Data.Set as Z
 import qualified Data.Foldable as F
 
+import Control.Concurrent
+import Control.Concurrent.STM
+-- import Control.Concurrent.STM.TMVar
+
+import Control.Monad (forever)
+
 import Graphics.Gloss
+
+type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
+
+constructPlayer :: (ServerToClient -> IO ClientToServer) -> IO Player
+constructPlayer respondTo
+    = do
+    inbox  <- newEmptyTMVarIO -- :: (TMVar ServerToClient)
+    outbox <- newEmptyTMVarIO -- :: (TMVar ClientToServer)
+    thread <- forkIO $ playerThread inbox outbox
+    return (inbox, outbox, thread)
+
+    where playerThread inbox outbox = forever $ do
+            message <- atomically $ takeTMVar inbox
+            response <- respondTo message
+            atomically $ putTMVar outbox response
+
+constructGUIPlayer :: IO Player
+constructGUIPlayer = undefined
 {-- Client Side code
  -- actual mechanism of splitting it as thread to be determined
  --
