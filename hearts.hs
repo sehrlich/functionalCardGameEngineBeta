@@ -64,7 +64,7 @@ msgClient (inbox, outbox, _) message
 
 gameLoop :: [Player] -> World -> IO World
 gameLoop players StartGame
-    = do 
+    = do
     --mapM_ (msgClient flip StcGameStart) players
     _ <- msgClient (head players) StcGameStart
     gameLoop players $ StartRound PassLeft $ S.fromList [0,0,0,0]
@@ -214,7 +214,7 @@ render (RenderInRound hand played scores) = do
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
- 
+
     renderPlay played
     renderHand hand
     renderScores scores
