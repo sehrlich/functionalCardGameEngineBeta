@@ -5,21 +5,21 @@ module PlayingCards
     , Trick
     , Hand
     -- Utility
-    , readCard
+    , readCard     -- | Interpret a two character string as a card
     -- deck
-    , shuffledDeck
+    , shuffledDeck -- | Provides a shuffled standard poker deck
     , draw
     , drawExactly
-    , orderPile
-    , unorderPile
+    , orderPile    -- | Converts a Hand to a Trick
+    , unorderPile  -- | Converts a Trick to a Hand
     -- , stdDeck
     -- , shuffle
     -- trick taking utilities
     , followsSuit 
-    , trickWinner
+    , trickWinner 
     ) where
 import Data.List (intercalate)
-import Data.Function (on, flip)
+import Data.Function (on)
 import Control.Monad (forM)
 import Data.Array.IO
 import System.Random
@@ -113,7 +113,7 @@ unorderPile :: OrdPile -> Pile
 unorderPile pile = Set.fromList $ F.toList pile
 {--| Randomly draw n cards from pile (until pile is empty), return the drawn stack and the reduced pile --}
 draw :: Int -> Pile -> (Pile, Pile)
-draw n deck = undefined
+draw _n _deck = undefined
 --    if n <= length deck
 --    then Just $ Seq.splitAt n deck
 --    else Nothing

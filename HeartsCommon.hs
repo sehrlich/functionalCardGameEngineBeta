@@ -13,15 +13,15 @@ module HeartsCommon
     , ServerToClient(..)
     -- Game Logic (client can access)
     , isValidPlay
-    ) where 
+    ) where
 import PlayingCards
 import Data.Set (Set)
 import Data.Sequence (Seq)
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 
-data Effect = Effect (World -> World) 
-                | GetInput 
+data Effect = Effect (World -> World)
+                | GetInput
                 | NewTrick
                 | ComputeWinner
 
@@ -30,7 +30,7 @@ data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq)
 -- curPlayer, played so far, scores this round, hearts broken
 data Info = TrickInfo PlayerID Trick Scores Bool
 data World = InRound Board Stack Info
-            | StartGame 
+            | StartGame
             | StartRound PassDir Scores
             | PassingPhase Board PassDir
             | RoundOver Scores
@@ -40,12 +40,15 @@ type Scores = Seq Int
 type PlayerID = Int
 type Board = Seq Hand
 
-data Message = ClientToServer | ServerToClient 
-data ClientToServer = CtsMove Card 
+data Message = ClientToServer | ServerToClient
+data ClientToServer = CtsMove Card
                     | CtsPassSelection (Set Card)
                     | CtsDisconnect
-data ServerToClient = StcGetMove Hand Info 
+                    | CtsAcknowledge
+
+data ServerToClient = StcGetMove Hand Info
                     | StcGetPassSelection Hand PassDir
+                    | StcGameStart
                     | StcGameOver
 
 -- This seems like an ideal thing to practice using quickCheck with
@@ -59,7 +62,7 @@ isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
         is2c c          = c == Card {_suit = Clubs, _rank = 2}
         isGarbage c     = _suit c == Hearts || c == Card {_suit = Spades, _rank = 12}
     in
-    playIf is2c && 
-        if on_lead 
+    playIf is2c &&
+        if on_lead
         then not (isGarbage card || heartsBroken || F.all isGarbage hand)
         else playIf matchesLead && not (isGarbage card && isFirstTrick)

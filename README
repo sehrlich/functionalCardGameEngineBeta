@@ -3,8 +3,11 @@ Current Status
 
 Front end
 Klondike
-Hearts maybe: 
-    -- rpc/servery thing, 
+Hearts
+    make rendering client responsibility
+    add broadcastToAllClients variant of msgClient
+    maybe:
+    -- rpc/servery thing,
     -- stop computing scores along the way and store tricks, then compute at round end
     -- ai can be better for testing (if can dodge trick, throw points. If can't win big)
     -- revamp info with lenses
