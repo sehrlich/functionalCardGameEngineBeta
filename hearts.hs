@@ -40,6 +40,7 @@ main = do
         p1 <- constructPlayer aiclient
         p2 <- constructPlayer aiclient
         p3 <- constructPlayer aiclient
+        _renderer <- constructGUIPlayer
         void $ gameLoop [p0,p1,p2,p3] StartGame
 
 msgClient :: Player -> ServerToClient -> IO ClientToServer
@@ -73,7 +74,8 @@ gameLoop _players (RoundOver scores)
 
 gameLoop _players (GameOver scores)
     = do
-    putStrLn "Game Over"; print scores -- should really be send message to clients
+    -- should really be send message to clients
+    putStrLn "Game Over"; print scores 
     -- msg clients game over
     return $ GameOver scores
 

@@ -3,6 +3,7 @@ module HeartsClient
     , constructPlayer
     , client
     , aiclient
+    , Player 
     )
     where
 import HeartsCommon
@@ -34,7 +35,32 @@ constructPlayer respondTo
             atomically $ putTMVar outbox response
 
 constructGUIPlayer :: IO Player
-constructGUIPlayer = undefined
+constructGUIPlayer
+    = do
+    inbox  <- newEmptyTMVarIO -- :: (TMVar ServerToClient)
+    outbox <- newEmptyTMVarIO -- :: (TMVar ClientToServer)
+    thread <- forkIO $ guiThread inbox outbox
+    return (inbox, outbox, thread)
+
+guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> IO ()
+guiThread _inbox _outbox
+    = do play
+            (InWindow
+            "Hearts" 	 -- window title
+            (400, 150) 	 -- window size
+            (10, 10)) 	 -- window position
+            white			 -- background color
+            100              -- steps per second
+            ""               -- world 
+            displayText      -- picture to display
+            eventHandle      -- event handler
+            (\_ world -> world) -- time update
+    where displayText outpt = Translate (-170) (-20)
+                  $ Scale 0.5 0.5
+                  $ Text outpt
+          eventHandle event _world = show event
+
+
 {-- Client Side code
  -- actual mechanism of splitting it as thread to be determined
  --
@@ -49,12 +75,7 @@ constructGUIPlayer = undefined
 client :: ServerToClient -> IO ClientToServer
 
 client StcGameStart = do
-    display (InWindow "HeartsGui" (400,150) (10,10)) white picture
     return CtsAcknowledge
-    where picture
-            = Translate (-170) (-20)
-            $ Scale 0.5 0.5
-            $ Text "playing hearts"
 
 client (StcGetMove hand info) = do
     card <- getMove hand info
