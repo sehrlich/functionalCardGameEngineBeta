@@ -3,12 +3,15 @@ module HeartsClient
     , constructPlayer
     , client
     , aiclient
-    , Player 
+    , Player
+    , RenderInfo(..)
+    , renderText
     )
     where
 import HeartsCommon
 import PlayingCards
 import qualified Data.Set as Z
+import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 
 import Control.Concurrent
@@ -18,6 +21,8 @@ import Control.Concurrent.STM
 import Control.Monad (forever)
 
 import Graphics.Gloss
+-- text rendering
+import Data.List (intercalate) -- colorize
 
 type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
 
@@ -45,13 +50,10 @@ constructGUIPlayer
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> IO ()
 guiThread _inbox _outbox
     = do play
-            (InWindow
-            "Hearts" 	 -- window title
-            (400, 150) 	 -- window size
-            (10, 10)) 	 -- window position
+            window
             white			 -- background color
             100              -- steps per second
-            ""               -- world 
+            ""               -- world -- move to RenderInfo
             displayText      -- picture to display
             eventHandle      -- event handler
             (\_ world -> world) -- time update
@@ -59,6 +61,10 @@ guiThread _inbox _outbox
                   $ Scale 0.5 0.5
                   $ Text outpt
           eventHandle event _world = show event
+          window = (InWindow
+                   "Hearts" 	 -- window title
+                   (400, 150) 	 -- window size
+                   (10, 10)) 	 -- window position
 
 
 {-- Client Side code
@@ -144,3 +150,69 @@ aiclient (StcGetPassSelection hand _passDir) = do
 
 aiclient StcGameStart = return CtsAcknowledge
 aiclient StcGameOver = return CtsDisconnect
+
+
+---------------------------------------------
+-- Gui stuff
+-- Render type
+-- and rendering functions that get wrapped up
+-- for gloss
+data RenderInfo = RenderServerState Board Info
+                | Passing Hand PassDir
+                | BetweenRounds Scores
+                | RenderInRound Hand Trick Scores
+
+_render :: RenderInfo -> Picture
+_render = undefined
+
+--------
+-- figure out display
+--
+-----------------------------------------------
+renderText :: RenderInfo -> IO ()
+renderText (RenderInRound hand played scores) = do
+    -- if we should only be rendering the current players hand then do some checking
+    -- the following clears the screen
+    putStrLn "\ESC[H\ESC[2J"
+
+    renderPlay played
+    renderHand hand
+    renderScores scores
+
+renderText (RenderServerState board (TrickInfo curPlayer _played scores _)) = do
+    -- if we should only be rendering the current players hand then do some checking
+    -- the following clears the screen
+    putStrLn "\ESC[H\ESC[2J"
+
+    --renderPlay played
+    renderBoard board curPlayer
+    renderScores scores
+
+renderText (Passing hand _passDir) = renderHand hand
+
+renderText (BetweenRounds scores) = renderScores scores
+
+renderScores :: Scores -> IO ()
+renderScores scores = mapM_ showScore [0..3]
+    where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
+          showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
+
+renderBoard :: Board -> Int -> IO ()
+renderBoard board activePlayer = mapM_ printHand [0..3]
+    where printHand i = do
+                        putStr $ colorize  [44 | i==activePlayer] $ concat ["Player ", show i, " Hand:"]
+                        putStr " "
+                        renderHand $ board `S.index` i
+
+renderHand :: Hand -> IO ()
+renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
+
+renderPlay :: Trick -> IO ()
+renderPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show ) played)
+
+
+colorize :: [Int] -> String -> String
+colorize options str = "\ESC["
+                        ++ intercalate ";" [show i | i <-options]
+                        ++ "m" ++ str ++ "\ESC[0m"
+

@@ -13,7 +13,6 @@ import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 import Control.Monad (void)
 import Data.Maybe (fromJust)
-import Data.List (intercalate) -- colorize
 
 -- for serialization
 -- import Data.Typeable
@@ -69,13 +68,13 @@ gameLoop _players (RoundOver scores)
                 putStrLn $ "Player " ++ show p ++ " shot the moon"
                 return $ fmap (26-) scores
     -- send info to clients
-    render (BetweenRounds scores)
+    renderText (BetweenRounds scores)
     return $ RoundOver scores'
 
 gameLoop _players (GameOver scores)
     = do
     -- should really be send message to clients
-    putStrLn "Game Over"; print scores 
+    putStrLn "Game Over"; print scores
     -- msg clients game over
     return $ GameOver scores
 
@@ -114,7 +113,7 @@ gameLoop players (PassingPhase deal passDir)
             rotate (Empty) =  S.empty
             rotate _ = error "this is not a sequence"
         in do
-        render (Passing (deal `S.index` 0) passDir)
+        renderText (Passing (deal `S.index` 0) passDir)
         s0 <- getValidatedSelection 0
         s1 <- getValidatedSelection 1
         s2 <- getValidatedSelection 2
@@ -137,7 +136,7 @@ gameLoop _players (InRound _board [] _info)
     -- Fix this case
 gameLoop players (InRound board (now:on_stack) info)
     = do
-    render (RenderServerState board info)
+    renderText (RenderServerState board info)
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty
     case now of
@@ -189,60 +188,6 @@ play card (InRound board _stack (TrickInfo cur_player played scores bool)) =
     in
         InRound new_board _stack (TrickInfo next_player new_played scores bool)
 play _ _ = error "world not InRound"
-
--- rewriting this for servery stuff
-data RenderInfo = RenderServerState Board Info
-                | Passing Hand PassDir
-                | BetweenRounds Scores
-                | RenderInRound Hand Trick Scores
-render :: RenderInfo -> IO ()
-
---render :: Board -> Info -> IO ()
-render (RenderInRound hand played scores) = do
-    -- if we should only be rendering the current players hand then do some checking
-    -- the following clears the screen
-    putStrLn "\ESC[H\ESC[2J"
-
-    renderPlay played
-    renderHand hand
-    renderScores scores
-
-render (RenderServerState board info@(TrickInfo _ _played scores _)) = do
-    -- if we should only be rendering the current players hand then do some checking
-    -- the following clears the screen
-    putStrLn "\ESC[H\ESC[2J"
-
-    --renderPlay played
-    renderBoard board $ curPlayer info
-    renderScores scores
-
-render (Passing hand _passDir) = renderHand hand
-
-render (BetweenRounds scores) = renderScores scores
-
-renderScores :: Scores -> IO ()
-renderScores scores = mapM_ showScore [0..3]
-    where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
-          showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
-
-renderBoard :: Board -> Int -> IO ()
-renderBoard board activePlayer = mapM_ printHand [0..3]
-    where printHand i = do
-                        putStr $ colorize  [44 | i==activePlayer] $ concat ["Player ", show i, " Hand:"]
-                        putStr " "
-                        renderHand $ board `S.index` i
-
-renderHand :: Hand -> IO ()
-renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
-
-renderPlay :: Trick -> IO ()
-renderPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show ) played)
-
-
-colorize :: [Int] -> String -> String
-colorize options str = "\ESC["
-                        ++ intercalate ";" [show i | i <-options]
-                        ++ "m" ++ str ++ "\ESC[0m"
 
 
 -- Patterns go at end of file since hlint can't parse them
