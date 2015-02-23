@@ -62,7 +62,8 @@ isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
         is2c c          = c == Card {_suit = Clubs, _rank = 2}
         isGarbage c     = _suit c == Hearts || c == Card {_suit = Spades, _rank = 12}
     in
+    -- Note that at the moment, you can't lead the QS if hearts hasn't been broken
     playIf is2c &&
         if on_lead
-        then (not .  isGarbage) card || heartsBroken ||  F.all isGarbage hand
+        then (not . isGarbage) card || heartsBroken ||  F.all isGarbage hand
         else playIf matchesLead && not (isGarbage card && isFirstTrick)

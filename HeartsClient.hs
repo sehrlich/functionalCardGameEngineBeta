@@ -143,7 +143,7 @@ aiclient :: ServerToClient -> IO ClientToServer
 aiclient (StcGetMove hand info@(TrickInfo player trick scores heartsbroken)) = do
     threadDelay 1000000 -- sleep 1 second
     case F.find (isValidPlay hand info) $ Z.toList hand of
-        Nothing   -> error $ unlines 
+        Nothing   -> error $ unlines
                     ["apparently cannot play card"
                     , show hand
                     , show trick
@@ -180,7 +180,7 @@ _render _rinfo = undefined
         leftOpp   = renderHand pos dir hand
         rightOpp  = renderHand pos dir hand
         acrossOpp = renderHand pos dir hand
-    in 
+    in
     Pictures [playArea, handArea, leftOpp, rightOpp, acrossOpp, debugArea]-}
 
 --------
