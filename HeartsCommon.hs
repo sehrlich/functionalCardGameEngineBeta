@@ -64,5 +64,5 @@ isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
     in
     playIf is2c &&
         if on_lead
-        then not (isGarbage card || heartsBroken || F.all isGarbage hand)
+        then (not .  isGarbage) card || heartsBroken ||  F.all isGarbage hand
         else playIf matchesLead && not (isGarbage card && isFirstTrick)

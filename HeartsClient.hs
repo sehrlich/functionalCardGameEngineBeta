@@ -58,13 +58,14 @@ guiThread _inbox _outbox
             eventHandle      -- event handler
             (\_ world -> world) -- time update
     where displayText outpt = Translate (-170) (-20)
-                  $ Scale 0.5 0.5
+                  $ Scale 0.125 0.125
                   $ Text outpt
           eventHandle event _world = show event
           window = (InWindow
-                   "Hearts" 	 -- window title
-                   (400, 150) 	 -- window size
-                   (10, 10)) 	 -- window position
+                   "Gloss" 	    -- window title
+                                -- title fixed for xmonad
+                   (800, 600)   -- window size
+                   (10, 10)) 	-- window position
 
 
 {-- Client Side code
@@ -139,12 +140,21 @@ getInput = do
 {- The trivial ai -}
 {- should replace with random choice -}
 aiclient :: ServerToClient -> IO ClientToServer
-aiclient (StcGetMove hand info) =
+aiclient (StcGetMove hand info@(TrickInfo player trick scores heartsbroken)) = do
+    threadDelay 1000000 -- sleep 1 second
     case F.find (isValidPlay hand info) $ Z.toList hand of
-        Nothing   -> error "apparently cannot play card"
+        Nothing   -> error $ unlines 
+                    ["apparently cannot play card"
+                    , show hand
+                    , show trick
+                    , show heartsbroken
+                    , show player
+                    , show scores
+                    ]
         Just card -> return $ CtsMove card
 
 aiclient (StcGetPassSelection hand _passDir) = do
+    threadDelay 500000 -- sleep 0.5 second
     let cardSet = Z.fromList $ take 3 $ Z.toList hand
     return $ CtsPassSelection cardSet
 
@@ -163,7 +173,15 @@ data RenderInfo = RenderServerState Board Info
                 | RenderInRound Hand Trick Scores
 
 _render :: RenderInfo -> Picture
-_render = undefined
+_render _rinfo = undefined
+    {-let playArea  = renderPlayArea
+        handArea  = renderHand pos dir hand
+        debugArea = renderDebugArea
+        leftOpp   = renderHand pos dir hand
+        rightOpp  = renderHand pos dir hand
+        acrossOpp = renderHand pos dir hand
+    in 
+    Pictures [playArea, handArea, leftOpp, rightOpp, acrossOpp, debugArea]-}
 
 --------
 -- figure out display
