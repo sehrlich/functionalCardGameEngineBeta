@@ -22,8 +22,7 @@ import Data.Maybe (fromJust)
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TMVar
-
--- import Async
+import qualified Control.Concurrent.Async as Async
 -- import Control.Distributed.Process
 
 -- import Data.Vector
@@ -48,6 +47,10 @@ msgClient (inbox, outbox, _) message
     atomically $ putTMVar inbox message
     atomically $ takeTMVar outbox
 
+broadcast :: [Player] -> ServerToClient -> IO [ClientToServer]
+broadcast players message 
+    = Async.mapConcurrently (flip msgClient message) players
+
 gameLoop :: [Player] -> World -> IO World
 gameLoop players StartGame
     = do
@@ -56,7 +59,7 @@ gameLoop players StartGame
     gameLoop players $ StartRound PassLeft $ S.fromList [0,0,0,0]
 
 -- dataflow states, may not need to have them
-gameLoop _players (RoundOver scores)
+gameLoop players (RoundOver scores)
     = do
     putStrLn "Round Over"
     -- check for shooting the moon
@@ -68,7 +71,7 @@ gameLoop _players (RoundOver scores)
                 putStrLn $ "Player " ++ show p ++ " shot the moon"
                 return $ fmap (26-) scores
     -- send info to clients
-    renderText (BetweenRounds scores)
+    _ <- broadcast players (StcRender $ BetweenRounds scores)
     return $ RoundOver scores'
 
 gameLoop _players (GameOver scores)
@@ -113,7 +116,7 @@ gameLoop players (PassingPhase deal passDir)
             rotate (Empty) =  S.empty
             rotate _ = error "this is not a sequence"
         in do
-        renderText (Passing (deal `S.index` 0) passDir)
+        _ <- broadcast players (StcRender $ Passing (deal `S.index` 0) passDir)
         s0 <- getValidatedSelection 0
         s1 <- getValidatedSelection 1
         s2 <- getValidatedSelection 2
@@ -136,7 +139,7 @@ gameLoop _players (InRound _board [] _info)
     -- Fix this case
 gameLoop players (InRound board (now:on_stack) info)
     = do
-    renderText (RenderServerState board info)
+    _ <- broadcast players $ StcRender (RenderServerState board info)
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty
     case now of

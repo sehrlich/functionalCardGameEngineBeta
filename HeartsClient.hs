@@ -5,11 +5,16 @@ module HeartsClient
     , aiclient
     , Player
     , RenderInfo(..)
-    , renderText
+    -- , renderText
+    -- Communication Related
+    -- , Message(..)
+    , ClientToServer(..)
+    , ServerToClient(..)
     )
     where
 import HeartsCommon
 import PlayingCards
+import Data.Set (Set)
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
@@ -26,6 +31,17 @@ import Data.List (intercalate) -- colorize
 
 type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
 
+-- data Message = ClientToServer | ServerToClient
+data ClientToServer = CtsMove Card
+                    | CtsPassSelection (Set Card)
+                    | CtsDisconnect
+                    | CtsAcknowledge
+
+data ServerToClient = StcGetMove Hand Info
+                    | StcGetPassSelection Hand PassDir
+                    | StcGameStart
+                    | StcGameOver
+                    | StcRender RenderInfo
 constructPlayer :: (ServerToClient -> IO ClientToServer) -> IO Player
 constructPlayer respondTo
     = do
@@ -80,6 +96,10 @@ guiThread _inbox _outbox
  --}
 
 client :: ServerToClient -> IO ClientToServer
+
+client (StcRender rinfo) = do
+    renderText rinfo
+    return CtsAcknowledge
 
 client StcGameStart = do
     return CtsAcknowledge
@@ -159,9 +179,8 @@ aiclient (StcGetPassSelection hand _passDir) = do
     return $ CtsPassSelection cardSet
 
 aiclient StcGameStart = return CtsAcknowledge
+aiclient (StcRender _rinfo) = return CtsAcknowledge
 aiclient StcGameOver = return CtsDisconnect
-
-
 ---------------------------------------------
 -- Gui stuff
 -- Render type

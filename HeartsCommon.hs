@@ -7,15 +7,10 @@ module HeartsCommon
     , Scores
     , PlayerID
     , Board
-    -- Communication Related
-    , Message(..)
-    , ClientToServer(..)
-    , ServerToClient(..)
     -- Game Logic (client can access)
     , isValidPlay
     ) where
 import PlayingCards
-import Data.Set (Set)
 import Data.Sequence (Seq)
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
@@ -39,17 +34,6 @@ type Stack = [Effect]
 type Scores = Seq Int
 type PlayerID = Int
 type Board = Seq Hand
-
-data Message = ClientToServer | ServerToClient
-data ClientToServer = CtsMove Card
-                    | CtsPassSelection (Set Card)
-                    | CtsDisconnect
-                    | CtsAcknowledge
-
-data ServerToClient = StcGetMove Hand Info
-                    | StcGetPassSelection Hand PassDir
-                    | StcGameStart
-                    | StcGameOver
 
 -- This seems like an ideal thing to practice using quickCheck with
 -- namely, no matter what the trick is, should always have at least one valid play
