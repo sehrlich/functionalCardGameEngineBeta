@@ -1,6 +1,6 @@
 {-# LANGUAGE ViewPatterns, PatternSynonyms #-} -- for pattern matching on sequences
-{-# LANGUAGE DeriveGeneric, DeriveDataTypeable #-} -- for the serializable nonsense
 {-# OPTIONS_GHC -Wall -fno-warn-unused-imports #-}
+-- {-# LANGUAGE DeriveGeneric, DeriveDataTypeable #-} -- for the serializable nonsense
 -- {-# LANGUAGE TemplateHaskell #-} -- make lenses maybe
 -- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
@@ -19,22 +19,15 @@ import Data.Maybe (fromJust)
 -- import Data.Binary
 -- import GHC.Generics (Generic)
 
-import Control.Concurrent
+-- import Control.Concurrent
 import Control.Concurrent.STM
-import Control.Concurrent.STM.TMVar
+-- import Control.Concurrent.STM.TMVar
 import qualified Control.Concurrent.Async as Async
 -- import Control.Distributed.Process
 
--- import Data.Vector
--- consider replacing all list with sequences
--- import prelude as qualified
--- and importing all of sequence
-
-
-
 main :: IO ()
 main = do
-        p0 <- constructPlayer client
+        p0 <- constructPlayer clientTextBased
         p1 <- constructPlayer aiclient
         p2 <- constructPlayer aiclient
         p3 <- constructPlayer aiclient
@@ -48,36 +41,38 @@ msgClient (inbox, outbox, _) message
     atomically $ takeTMVar outbox
 
 broadcast :: [Player] -> ServerToClient -> IO [ClientToServer]
-broadcast players message 
+broadcast players message
     = Async.mapConcurrently (flip msgClient message) players
+
+broadcast_ :: [Player] -> ServerToClient -> IO ()
+broadcast_ players message
+    = broadcast players message >> return ()
 
 gameLoop :: [Player] -> World -> IO World
 gameLoop players StartGame
     = do
-    --mapM_ (msgClient flip StcGameStart) players
-    _ <- msgClient (head players) StcGameStart
+    broadcast_ players StcGameStart
     gameLoop players $ StartRound PassLeft $ S.fromList [0,0,0,0]
 
 -- dataflow states, may not need to have them
 gameLoop players (RoundOver scores)
     = do
-    putStrLn "Round Over"
     -- check for shooting the moon
     let moon_shot = 26 `S.elemIndexL` scores
     scores' <-
         case moon_shot of
             Nothing -> return scores
-            Just p -> do
-                putStrLn $ "Player " ++ show p ++ " shot the moon"
+            Just _p -> do
+                -- putStrLn $ "Player " ++ show p ++ " shot the moon"
                 return $ fmap (26-) scores
     -- send info to clients
-    _ <- broadcast players (StcRender $ BetweenRounds scores)
+    broadcast_ players (StcRender $ BetweenRounds scores')
     return $ RoundOver scores'
 
 gameLoop _players (GameOver scores)
     = do
     -- should really be send message to clients
-    putStrLn "Game Over"; print scores
+    -- putStrLn "Game Over"; print scores
     -- msg clients game over
     return $ GameOver scores
 
@@ -116,7 +111,7 @@ gameLoop players (PassingPhase deal passDir)
             rotate (Empty) =  S.empty
             rotate _ = error "this is not a sequence"
         in do
-        _ <- broadcast players (StcRender $ Passing (deal `S.index` 0) passDir)
+        broadcast_ players (StcRender $ Passing (deal `S.index` 0) passDir)
         s0 <- getValidatedSelection 0
         s1 <- getValidatedSelection 1
         s2 <- getValidatedSelection 2
@@ -139,7 +134,8 @@ gameLoop _players (InRound _board [] _info)
     -- Fix this case
 gameLoop players (InRound board (now:on_stack) info)
     = do
-    _ <- broadcast players $ StcRender (RenderServerState board info)
+    broadcast_ players $ StcRender (RenderServerState board info)
+    -- Replace above with RenderInRound
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty
     case now of

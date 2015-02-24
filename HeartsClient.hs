@@ -1,7 +1,7 @@
 module HeartsClient
     ( constructGUIPlayer
     , constructPlayer
-    , client
+    , clientTextBased
     , aiclient
     , Player
     , RenderInfo(..)
@@ -26,6 +26,7 @@ import Control.Concurrent.STM
 import Control.Monad (forever)
 
 import Graphics.Gloss
+import Graphics.Gloss.Interface.IO.Game (playIO)
 -- text rendering
 import Data.List (intercalate) -- colorize
 
@@ -42,6 +43,12 @@ data ServerToClient = StcGetMove Hand Info
                     | StcGameStart
                     | StcGameOver
                     | StcRender RenderInfo
+
+data RenderInfo = RenderServerState Board Info
+                | Passing Hand PassDir
+                | BetweenRounds Scores
+                | RenderInRound Hand Trick Scores
+
 constructPlayer :: (ServerToClient -> IO ClientToServer) -> IO Player
 constructPlayer respondTo
     = do
@@ -65,18 +72,18 @@ constructGUIPlayer
 
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> IO ()
 guiThread _inbox _outbox
-    = do play
+    = do playIO
             window
             white			 -- background color
             100              -- steps per second
             ""               -- world -- move to RenderInfo
             displayText      -- picture to display
             eventHandle      -- event handler
-            (\_ world -> world) -- time update
-    where displayText outpt = Translate (-170) (-20)
+            (\_ world -> return world) -- time update
+    where displayText outpt = return $ Translate (-170) (-20)
                   $ Scale 0.125 0.125
                   $ Text outpt
-          eventHandle event _world = show event
+          eventHandle event _world = return $ show event
           window = (InWindow
                    "Gloss" 	    -- window title
                                 -- title fixed for xmonad
@@ -95,26 +102,26 @@ guiThread _inbox _outbox
  -- Also, rendering should go here
  --}
 
-client :: ServerToClient -> IO ClientToServer
+clientTextBased :: ServerToClient -> IO ClientToServer
 
-client (StcRender rinfo) = do
+clientTextBased (StcRender rinfo) = do
     renderText rinfo
     return CtsAcknowledge
 
-client StcGameStart = do
+clientTextBased StcGameStart = do
     return CtsAcknowledge
 
-client (StcGetMove hand info) = do
+clientTextBased (StcGetMove hand info) = do
     card <- getMove hand info
     return $ CtsMove card
 
-client (StcGetPassSelection hand _passDir) = do
+clientTextBased (StcGetPassSelection hand _passDir) = do
    -- render $ Passing hand passDir
    cardSet <- getMultiCards 3 hand
    -- do client validation here
    return $ CtsPassSelection cardSet
 
-client StcGameOver = return CtsDisconnect
+clientTextBased StcGameOver = return CtsDisconnect
 
 getMove :: Hand -> Info -> IO Card
 getMove hand info = do
@@ -186,11 +193,6 @@ aiclient StcGameOver = return CtsDisconnect
 -- Render type
 -- and rendering functions that get wrapped up
 -- for gloss
-data RenderInfo = RenderServerState Board Info
-                | Passing Hand PassDir
-                | BetweenRounds Scores
-                | RenderInRound Hand Trick Scores
-
 _render :: RenderInfo -> Picture
 _render _rinfo = undefined
     {-let playArea  = renderPlayArea
@@ -212,40 +214,40 @@ renderText (RenderInRound hand played scores) = do
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    renderPlay played
-    renderHand hand
-    renderScores scores
+    renderTextPlay played
+    renderTextHand hand
+    renderTextScores scores
 
-renderText (RenderServerState board (TrickInfo curPlayer _played scores _)) = do
+renderText (RenderServerState board (TrickInfo curPlayer played scores _)) = do
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    --renderPlay played
-    renderBoard board curPlayer
-    renderScores scores
+    renderTextPlay played
+    renderTextBoard board curPlayer
+    renderTextScores scores
 
-renderText (Passing hand _passDir) = renderHand hand
+renderText (Passing hand _passDir) = renderTextHand hand
 
-renderText (BetweenRounds scores) = renderScores scores
+renderText (BetweenRounds scores) = renderTextScores scores
 
-renderScores :: Scores -> IO ()
-renderScores scores = mapM_ showScore [0..3]
+renderTextScores :: Scores -> IO ()
+renderTextScores scores = mapM_ showScore [0..3]
     where showScore  i = putStrLn $ showPlayer i ++ " Score:" ++ show (scores `S.index` i)
           showPlayer i = {- colorize  [44 | i==curPlayer] $ -} "Player " ++ show i
 
-renderBoard :: Board -> Int -> IO ()
-renderBoard board activePlayer = mapM_ printHand [0..3]
+renderTextBoard :: Board -> Int -> IO ()
+renderTextBoard board activePlayer = mapM_ printHand [0..3]
     where printHand i = do
                         putStr $ colorize  [44 | i==activePlayer] $ concat ["Player ", show i, " Hand:"]
                         putStr " "
-                        renderHand $ board `S.index` i
+                        renderTextHand $ board `S.index` i
 
-renderHand :: Hand -> IO ()
-renderHand hand = putStrLn $ unwords $ map show $ Z.toList hand
+renderTextHand :: Hand -> IO ()
+renderTextHand hand = putStrLn $ unwords $ map show $ Z.toList hand
 
-renderPlay :: Trick -> IO ()
-renderPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show ) played)
+renderTextPlay :: Trick -> IO ()
+renderTextPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show ) played)
 
 
 colorize :: [Int] -> String -> String
