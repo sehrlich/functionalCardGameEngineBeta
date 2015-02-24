@@ -49,6 +49,13 @@ data RenderInfo = RenderServerState Board Info
                 | BetweenRounds Scores
                 | RenderInRound Hand Trick Scores
 
+data RenderMode = RenderGame (Maybe RenderInfo) GuiState -- (Picture,pos) what player is currently moving
+                | RenderEmpty
+
+data GuiState   = DisplayOnly
+                {-| SelectCardsToPass-}
+                {-| SelectCardToPlay-}
+
 constructPlayer :: (ServerToClient -> IO ClientToServer) -> IO Player
 constructPlayer respondTo
     = do
@@ -76,14 +83,15 @@ guiThread _inbox _outbox
             window
             white			 -- background color
             100              -- steps per second
-            ""               -- world -- move to RenderInfo
+            RenderEmpty      -- world
             displayText      -- picture to display
             eventHandle      -- event handler
-            (\_ world -> return world) -- time update
-    where displayText outpt = return $ Translate (-170) (-20)
+            commHandle       -- time update
+    where displayText world = return $ Translate (-170) (-20)
                   $ Scale 0.125 0.125
-                  $ Text outpt
-          eventHandle event _world = return $ show event
+                  $ Text "RenderWorld is not yet shown properly"
+          eventHandle _event world = return world
+          commHandle _t world = return world
           window = (InWindow
                    "Gloss" 	    -- window title
                                 -- title fixed for xmonad
