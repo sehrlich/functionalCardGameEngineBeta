@@ -2,10 +2,17 @@ I'll be writing a bunch of card game variants and hope to eventually factor out 
 Current Status
 
 Front end
+    switch to using gui thread rather than text-based
+        * gui spawns text based thread and acts as a pipe
+        * move render text to being printed on gui, but still
+            read moves from std input
+        * draw cards
+        * mouse interaction with cards
+        * remove dependence on cli
 Klondike
+    redo with gui (and maybe client server nonsense)
 Hearts
     make rendering client responsibility
-    add broadcastToAllClients variant of msgClient
     maybe:
     -- rpc/servery thing,
     -- stop computing scores along the way and store tricks, then compute at round end

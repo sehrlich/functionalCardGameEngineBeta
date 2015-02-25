@@ -78,27 +78,54 @@ constructGUIPlayer
     return (inbox, outbox, thread)
 
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> IO ()
-guiThread _inbox _outbox
+guiThread inbox outbox
     = do playIO
             window
             white			 -- background color
             100              -- steps per second
             RenderEmpty      -- world
-            displayText      -- picture to display
+            drawWorld        -- picture to display
             eventHandle      -- event handler
             commHandle       -- time update
-    where displayText world = return $ Translate (-170) (-20)
-                  $ Scale 0.125 0.125
-                  $ Text "RenderWorld is not yet shown properly"
-          eventHandle _event world = return world
-          commHandle _t world = return world
+    where eventHandle _event world
+            = return world
+          commHandle _t world
+            = do
+            -- check inbox
+            message <- atomically $ tryTakeTMVar inbox
+            -- return $ maybe world handleMessage message
+            maybe (return world) (handleMessage_ outbox world) message
           window = (InWindow
                    "Gloss" 	    -- window title
                                 -- title fixed for xmonad
                    (800, 600)   -- window size
                    (10, 10)) 	-- window position
 
+{-handleMessage :: ServerToClient -> RenderMode
+handleMessage m = undefined-}
 
+handleMessage_ :: TMVar ClientToServer -> RenderMode -> ServerToClient -> IO RenderMode
+handleMessage_ outbox world m
+    = do
+    response <- clientTextBased m
+    atomically $ putTMVar outbox response
+    return $ case m of 
+        StcRender rinfo -> RenderGame (Just rinfo) DisplayOnly
+        _ -> world
+        
+
+drawWorld :: RenderMode -> IO Picture
+drawWorld RenderEmpty
+    = do
+    return $ Translate (-170) (-20)
+           $ Scale 0.125 0.125
+           $ Text "RenderWorld is not yet shown properly"
+
+drawWorld (RenderGame _mri _gs)
+    = do
+    return $ Translate (-170) (-20)
+           $ Scale 0.125 0.125
+           $ Text "RenderWorld is not yet shown properly"
 {-- Client Side code
  -- actual mechanism of splitting it as thread to be determined
  --

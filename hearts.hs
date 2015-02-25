@@ -27,11 +27,12 @@ import qualified Control.Concurrent.Async as Async
 
 main :: IO ()
 main = do
-        p0 <- constructPlayer clientTextBased
+        -- _renderer <- constructGUIPlayer
+        -- p0 <- constructPlayer clientTextBased
+        p0 <- constructGUIPlayer
         p1 <- constructPlayer aiclient
         p2 <- constructPlayer aiclient
         p3 <- constructPlayer aiclient
-        _renderer <- constructGUIPlayer
         void $ gameLoop [p0,p1,p2,p3] StartGame
 
 msgClient :: Player -> ServerToClient -> IO ClientToServer
