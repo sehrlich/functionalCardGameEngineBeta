@@ -113,10 +113,9 @@ handleMessage_ outbox world m
     {-response <- clientTextBased m-}
     {-atomically $ putTMVar outbox response-}
     _ <- async $ clientTextBased m >>= atomically . putTMVar outbox
-    return $ case m of 
+    return $ case m of
         StcRender rinfo -> RenderGame (rinfo) DisplayOnly []
         _ -> world
-        
 
 drawWorld :: RenderMode -> IO Picture
 drawWorld (RenderGame mri _gs debugInfo)
@@ -255,13 +254,16 @@ renderCard :: Card -> Picture
 renderCard card
     = Pictures
         [ Color magenta $ rectangleSolid (60) (80)
-        , Color black $ Scale (0.125) (0.125) $ Text $ show card
+        , Color (greyN 0.875) $ circleSolid 20
+        , Color black $ Translate (-10) (-5) $ Scale (0.125) (0.125) $ Text $ show card
         ]
 
 renderHand :: Hand -> Picture
-renderHand hand = Translate (-400) (0) $
-                    Pictures $ zipWith (\i -> translate (65 *i) (0) ) [1..]
-                        $ map renderCard $ Z.toList hand
+renderHand hand
+    = Translate (-400) (0)
+    $ Pictures
+        $ zipWith (\i -> translate (65 *i) (0)) [1..]
+        $ map renderCard $ Z.toList hand
 
 renderPlay :: Trick -> Picture
 renderPlay played = -- "Currently:" ++ F.concat (fmap ((' ':).show ) played)
