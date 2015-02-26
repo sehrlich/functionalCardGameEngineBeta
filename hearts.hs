@@ -29,25 +29,35 @@ main :: IO ()
 main = do
         -- _renderer <- constructGUIPlayer
         -- p0 <- constructPlayer clientTextBased
-        p0 <- constructGUIPlayer
-        p1 <- constructPlayer aiclient
-        p2 <- constructPlayer aiclient
-        p3 <- constructPlayer aiclient
+        p0 <- constructGUIPlayer 0
+        p1 <- constructPlayer aiclient 1
+        p2 <- constructPlayer aiclient 2
+        p3 <- constructPlayer aiclient 3
         void $ gameLoop [p0,p1,p2,p3] StartGame
 
 msgClient :: Player -> ServerToClient -> IO ClientToServer
-msgClient (inbox, outbox, _) message
+msgClient (inbox, outbox, _, _) message
     = do
     atomically $ putTMVar inbox message
     atomically $ takeTMVar outbox
 
-broadcast :: [Player] -> ServerToClient -> IO [ClientToServer]
-broadcast players message
-    = Async.mapConcurrently (flip msgClient message) players
+msgClientInternal :: Player -> (Int -> ServerToClient) -> IO ClientToServer
+msgClientInternal (inbox, outbox, _, forPos) message
+    = do
+    atomically $ putTMVar inbox (message forPos)
+    atomically $ takeTMVar outbox
+
+broadcastInternal :: [Player] -> (Int -> ServerToClient) -> IO [ClientToServer]
+broadcastInternal players message
+    = Async.mapConcurrently (flip msgClientInternal message) players
 
 broadcast_ :: [Player] -> ServerToClient -> IO ()
 broadcast_ players message
-    = broadcast players message >> return ()
+    = broadcastInternal players (const message) >> return ()
+
+broadcast_' :: [Player] -> (Int -> ServerToClient) -> IO ()
+broadcast_' players message
+    = broadcastInternal players (message) >> return ()
 
 gameLoop :: [Player] -> World -> IO World
 gameLoop players StartGame
@@ -133,10 +143,10 @@ gameLoop players (PassingPhase deal passDir)
 gameLoop _players (InRound _board [] _info)
     = error "stack is empty"
     -- Fix this case
-gameLoop players (InRound board (now:on_stack) info)
+gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores _broken))
     = do
-    broadcast_ players $ StcRender (RenderServerState board info)
-    -- Replace above with RenderInRound
+   -- broadcast_' players $ const $ StcRender (RenderServerState board info)
+    broadcast_' players $ \i -> StcRender (RenderInRound (S.index board i) played scores)
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty
     case now of

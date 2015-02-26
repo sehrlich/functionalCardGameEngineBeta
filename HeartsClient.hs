@@ -30,7 +30,7 @@ import Graphics.Gloss.Interface.IO.Game (playIO)
 -- text rendering
 import Data.List (intercalate) -- colorize
 
-type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId) -- ??
+type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId, Int) -- ??
 
 -- data Message = ClientToServer | ServerToClient
 data ClientToServer = CtsMove Card
@@ -48,34 +48,36 @@ data RenderInfo = RenderServerState Board Info
                 | Passing Hand PassDir
                 | BetweenRounds Scores
                 | RenderInRound Hand Trick Scores
-
-data RenderMode = RenderGame (Maybe RenderInfo) GuiState -- (Picture,pos) what player is currently moving
                 | RenderEmpty
+
+data RenderMode = RenderGame RenderInfo GuiState DebugInfo-- (Picture,pos) what player is currently moving
+
+type DebugInfo = [String]
 
 data GuiState   = DisplayOnly
                 {-| SelectCardsToPass-}
                 {-| SelectCardToPlay-}
 
-constructPlayer :: (ServerToClient -> IO ClientToServer) -> IO Player
-constructPlayer respondTo
+constructPlayer :: (ServerToClient -> IO ClientToServer) -> Int -> IO Player
+constructPlayer respondTo pos
     = do
     inbox  <- newEmptyTMVarIO -- :: (TMVar ServerToClient)
     outbox <- newEmptyTMVarIO -- :: (TMVar ClientToServer)
     thread <- forkIO $ playerThread inbox outbox
-    return (inbox, outbox, thread)
+    return (inbox, outbox, thread, pos)
 
     where playerThread inbox outbox = forever $ do
             message <- atomically $ takeTMVar inbox
             response <- respondTo message
             atomically $ putTMVar outbox response
 
-constructGUIPlayer :: IO Player
-constructGUIPlayer
+constructGUIPlayer :: Int -> IO Player
+constructGUIPlayer pos
     = do
     inbox  <- newEmptyTMVarIO -- :: (TMVar ServerToClient)
     outbox <- newEmptyTMVarIO -- :: (TMVar ClientToServer)
     thread <- forkIO $ guiThread inbox outbox
-    return (inbox, outbox, thread)
+    return (inbox, outbox, thread, pos)
 
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> IO ()
 guiThread inbox outbox
@@ -83,12 +85,12 @@ guiThread inbox outbox
             window
             white			 -- background color
             100              -- steps per second
-            RenderEmpty      -- world
+            (RenderGame RenderEmpty DisplayOnly [])     -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             commHandle       -- time update
-    where eventHandle _event world
-            = return world
+    where eventHandle event (RenderGame rinfo _gs dbgInfo)
+            = return $ (RenderGame rinfo _gs ((show event):dbgInfo) )
           commHandle _t world
             = do
             -- check inbox
@@ -110,22 +112,17 @@ handleMessage_ outbox world m
     response <- clientTextBased m
     atomically $ putTMVar outbox response
     return $ case m of 
-        StcRender rinfo -> RenderGame (Just rinfo) DisplayOnly
+        StcRender rinfo -> RenderGame (rinfo) DisplayOnly []
         _ -> world
         
 
 drawWorld :: RenderMode -> IO Picture
-drawWorld RenderEmpty
+drawWorld (RenderGame mri _gs debugInfo)
     = do
-    return $ Translate (-170) (-20)
-           $ Scale 0.125 0.125
-           $ Text "RenderWorld is not yet shown properly"
-
-drawWorld (RenderGame _mri _gs)
-    = do
-    return $ Translate (-170) (-20)
-           $ Scale 0.125 0.125
-           $ Text "RenderWorld is not yet shown properly"
+    -- render debugInfo
+    let dbg = Translate (0) (-50) $ scale (0.125) (0.125) $ text $ unlines $ take 4 debugInfo
+    -- will want to use viewports for pictures
+    return $ Pictures [render mri, dbg]
 {-- Client Side code
  -- actual mechanism of splitting it as thread to be determined
  --
@@ -228,8 +225,17 @@ aiclient StcGameOver = return CtsDisconnect
 -- Render type
 -- and rendering functions that get wrapped up
 -- for gloss
-_render :: RenderInfo -> Picture
-_render _rinfo = undefined
+render :: RenderInfo -> Picture
+render RenderEmpty = Blank
+render (RenderInRound hand played _scores)
+    = Pictures
+        [ Translate (0) (-200) $ Text $ renderTextHand hand
+        , Translate (0) (-50) $ Text $ renderTextPlay played
+        ]
+        -- use viewports for pictures
+render (RenderServerState _ _) = Circle 2
+render (Passing _ _) = ThickCircle 40 5
+render (BetweenRounds _) = ThickCircle 50 8
     {-let playArea  = renderPlayArea
         handArea  = renderHand pos dir hand
         debugArea = renderDebugArea
@@ -249,8 +255,8 @@ renderText (RenderInRound hand played scores) = do
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    renderTextPlay played
-    renderTextHand hand
+    putStrLn $ renderTextPlay played
+    putStrLn $ renderTextHand hand
     renderTextScores scores
 
 renderText (RenderServerState board (TrickInfo curPlayer played scores _)) = do
@@ -258,11 +264,12 @@ renderText (RenderServerState board (TrickInfo curPlayer played scores _)) = do
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    renderTextPlay played
+    putStrLn $ renderTextPlay played
     renderTextBoard board curPlayer
     renderTextScores scores
 
-renderText (Passing hand _passDir) = renderTextHand hand
+renderText (Passing hand _passDir) = putStrLn $ renderTextHand hand
+renderText RenderEmpty = return ()
 
 renderText (BetweenRounds scores) = renderTextScores scores
 
@@ -276,13 +283,13 @@ renderTextBoard board activePlayer = mapM_ printHand [0..3]
     where printHand i = do
                         putStr $ colorize  [44 | i==activePlayer] $ concat ["Player ", show i, " Hand:"]
                         putStr " "
-                        renderTextHand $ board `S.index` i
+                        putStrLn $ renderTextHand $ board `S.index` i
 
-renderTextHand :: Hand -> IO ()
-renderTextHand hand = putStrLn $ unwords $ map show $ Z.toList hand
+renderTextHand :: Hand -> String
+renderTextHand hand = unwords $ map show $ Z.toList hand
 
-renderTextPlay :: Trick -> IO ()
-renderTextPlay played = putStrLn $ "Currently:" ++ F.concat (fmap ((' ':).show ) played)
+renderTextPlay :: Trick -> String
+renderTextPlay played = "Currently:" ++ F.concat (fmap ((' ':).show ) played)
 
 
 colorize :: [Int] -> String -> String
