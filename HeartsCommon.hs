@@ -20,7 +20,7 @@ data Effect = Effect (World -> World)
                 | NewTrick
                 | ComputeWinner
 
-data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq)
+data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Show)
 
 -- curPlayer, played so far, scores this round, hearts broken
 data Info = TrickInfo PlayerID Trick Scores Bool

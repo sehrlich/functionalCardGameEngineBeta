@@ -3,7 +3,7 @@ Current Status
 
 Front end
     switch to using gui thread rather than text-based
-        * gui spawns text based thread and acts as a pipe
+        -- * gui spawns text based thread and acts as a pipe
         * move render text to being printed on gui, but still
             read moves from std input
         * draw cards
@@ -14,6 +14,7 @@ Klondike
 Hearts
     make rendering client responsibility
     maybe:
+    -- move to mvc
     -- rpc/servery thing,
     -- stop computing scores along the way and store tricks, then compute at round end
     -- ai can be better for testing (if can dodge trick, throw points. If can't win big)

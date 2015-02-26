@@ -20,6 +20,7 @@ import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 
 import Control.Concurrent
+import Control.Concurrent.Async
 import Control.Concurrent.STM
 -- import Control.Concurrent.STM.TMVar
 
@@ -109,8 +110,9 @@ handleMessage m = undefined-}
 handleMessage_ :: TMVar ClientToServer -> RenderMode -> ServerToClient -> IO RenderMode
 handleMessage_ outbox world m
     = do
-    response <- clientTextBased m
-    atomically $ putTMVar outbox response
+    {-response <- clientTextBased m-}
+    {-atomically $ putTMVar outbox response-}
+    _ <- async $ clientTextBased m >>= atomically . putTMVar outbox
     return $ case m of 
         StcRender rinfo -> RenderGame (rinfo) DisplayOnly []
         _ -> world
@@ -120,9 +122,9 @@ drawWorld :: RenderMode -> IO Picture
 drawWorld (RenderGame mri _gs debugInfo)
     = do
     -- render debugInfo
-    let dbg = Translate (0) (-50) $ scale (0.125) (0.125) $ text $ unlines $ take 4 debugInfo
+    let dbg = Color rose $ Translate (0) (50) $ scale (0.125) (0.125) $ text $ unlines $ take 4 debugInfo
     -- will want to use viewports for pictures
-    return $ Pictures [render mri, dbg]
+    return $ Pictures [dbg, render mri]
 {-- Client Side code
  -- actual mechanism of splitting it as thread to be determined
  --
@@ -229,12 +231,16 @@ render :: RenderInfo -> Picture
 render RenderEmpty = Blank
 render (RenderInRound hand played _scores)
     = Pictures
-        [ Translate (0) (-200) $ Text $ renderTextHand hand
-        , Translate (0) (-50) $ Text $ renderTextPlay played
+        [ Translate (0) (-200) $ renderHand hand
+        , Translate (0) (-50) $ renderPlay played
         ]
         -- use viewports for pictures
 render (RenderServerState _ _) = Circle 2
-render (Passing _ _) = ThickCircle 40 5
+render (Passing hand dir)
+    = Pictures
+        [ Text $ show dir
+        , Translate (0) (-200) $ renderHand hand
+        ]
 render (BetweenRounds _) = ThickCircle 50 8
     {-let playArea  = renderPlayArea
         handArea  = renderHand pos dir hand
@@ -245,6 +251,21 @@ render (BetweenRounds _) = ThickCircle 50 8
     in
     Pictures [playArea, handArea, leftOpp, rightOpp, acrossOpp, debugArea]-}
 
+renderCard :: Card -> Picture
+renderCard card
+    = Pictures
+        [ Color magenta $ rectangleSolid (60) (80)
+        , Color black $ Scale (0.125) (0.125) $ Text $ show card
+        ]
+
+renderHand :: Hand -> Picture
+renderHand hand = Translate (-400) (0) $
+                    Pictures $ zipWith (\i -> translate (65 *i) (0) ) [1..]
+                        $ map renderCard $ Z.toList hand
+
+renderPlay :: Trick -> Picture
+renderPlay played = -- "Currently:" ++ F.concat (fmap ((' ':).show ) played)
+    Pictures $ F.toList $ S.mapWithIndex (\i -> (translate (80*(fromIntegral i)) (0)). renderCard) played
 --------
 -- figure out display
 --
@@ -286,14 +307,13 @@ renderTextBoard board activePlayer = mapM_ printHand [0..3]
                         putStrLn $ renderTextHand $ board `S.index` i
 
 renderTextHand :: Hand -> String
-renderTextHand hand = unwords $ map show $ Z.toList hand
+renderTextHand hand = unwords $ map pretty $ Z.toList hand
 
 renderTextPlay :: Trick -> String
-renderTextPlay played = "Currently:" ++ F.concat (fmap ((' ':).show ) played)
+renderTextPlay played = "Currently:" ++ F.concat (fmap ((' ':).pretty ) played)
 
 
 colorize :: [Int] -> String -> String
 colorize options str = "\ESC["
                         ++ intercalate ";" [show i | i <-options]
                         ++ "m" ++ str ++ "\ESC[0m"
-

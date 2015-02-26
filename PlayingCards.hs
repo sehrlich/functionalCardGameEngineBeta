@@ -5,6 +5,7 @@ module PlayingCards
     , Trick
     , Hand
     -- Utility
+    , pretty
     , readCard     -- | Interpret a two character string as a card
     -- deck
     , shuffledDeck -- | Provides a shuffled standard poker deck
@@ -38,14 +39,16 @@ type Pile = Set Card -- unordered
 type Hand = Pile
 
 instance Show Card 
-    where show (Card s r) 
-            = 
-            let (col,pic) = case s of
-                 Clubs       -> ([1,30,47], "C")
-                 Spades      -> ([1,30,47], "S")
-                 Hearts      -> ([1,31,47], "H")
-                 Diamonds    -> ([1,31,47], "D")
-            in colorize col $ ("-A23456789TJQKA"!!r) : pic
+    where show (Card s r) = ("-A23456789TJQKA"!!r) : (head $ show s) : ""
+
+pretty :: Card -> String
+pretty (Card s r) = 
+    let (col,pic) = case s of
+            Clubs       -> ([1,30,47], "♣")
+            Spades      -> ([1,30,47], "♠")
+            Hearts      -> ([1,31,47], "♥")
+            Diamonds    -> ([1,31,47], "♦")
+    in colorize col $ ("-A23456789TJQKA"!!r) : pic
 
 readSuit :: Char -> Suit
 readSuit s = case s of 
