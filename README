@@ -9,6 +9,16 @@ Front end
         -- * draw cards
         * mouse interaction with cards
         * remove dependence on cli
+    Medium/Long term wants for GUI
+        sensible text boxes
+        menus
+        buttons
+        draggable/clickable objects
+        regions
+        sensible object overlaps (works with clicking)
+        draw images
+    Philosophy
+        Gui cannot draw anything the server doesn't tell it about (it may choose not to draw redundant info)
 Klondike
     redo with gui (and maybe client server nonsense)
 Hearts
