@@ -9,9 +9,15 @@ module HeartsCommon
     , Board
     -- Game Logic (client can access)
     , isValidPlay
+    -- Communication interfaces
+    -- , Message(..)
+    , ServerToClient(..)
+    , ClientToServer(..)
+    , RenderInfo(..)
     ) where
 import PlayingCards
 import Data.Sequence (Seq)
+import Data.Set (Set)
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 
@@ -51,3 +57,24 @@ isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
         if on_lead
         then (not . isGarbage) card || heartsBroken ||  F.all isGarbage hand
         else playIf matchesLead && not (isGarbage card && isFirstTrick)
+
+----
+-- communication related
+
+-- data Message = ClientToServer | ServerToClient
+data ClientToServer = CtsMove Card
+                    | CtsPassSelection (Set Card)
+                    | CtsDisconnect
+                    | CtsAcknowledge
+
+data ServerToClient = StcGetMove Hand Info
+                    | StcGetPassSelection Hand PassDir
+                    | StcGameStart
+                    | StcGameOver
+                    | StcRender RenderInfo
+
+data RenderInfo = RenderServerState Board Info
+                | Passing Hand PassDir
+                | BetweenRounds Scores
+                | RenderInRound Hand Trick Scores
+                | RenderEmpty
