@@ -13,6 +13,9 @@ import Control.Concurrent.Async
 import Control.Concurrent.STM
 -- import Control.Concurrent.STM.TMVar
 
+-- may want to consider
+-- idSupply Data.Unique.ID or monadSupply or 
+-- Control.Eff.Fresh or some such
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game (playIO)
