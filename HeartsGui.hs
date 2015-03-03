@@ -22,6 +22,19 @@ import Graphics.Gloss.Interface.IO.Game (playIO)
 
 data RenderMode = RenderGame RenderInfo GuiState DebugInfo-- (Picture,pos) what player is currently moving
 
+type Depth = Int
+type Bbox  = (Int,Int)
+type Pos   = (Int,Int)
+data Sprite   = Sprite Bbox Pos RenderProcess
+data Zone     = Zone Bbox Depth ClickProcess
+type RenderProcess = IO Picture
+type ClickProcess = IO World
+
+data MarkIIRender = MarkIIRender
+    { zones     :: [Zone]
+    , sprites   :: [Sprite]
+    }
+
 type DebugInfo = [String]
 
 data GuiState   = DisplayOnly
