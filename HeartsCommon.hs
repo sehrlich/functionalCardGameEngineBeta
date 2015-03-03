@@ -1,5 +1,6 @@
 module HeartsCommon
-    ( Info(..)
+    ( module PlayingCards
+    , Info(..)
     , Effect(..)
     , PassDir(..)
     , World(..)
@@ -29,7 +30,12 @@ data Effect = Effect (World -> World)
 data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Show)
 
 -- curPlayer, played so far, scores this round, hearts broken
-data Info = TrickInfo PlayerID Trick Scores Bool
+data Info = TrickInfo
+            { curPlayer       :: PlayerID
+            , playedSoFar     :: Trick
+            , pointsCollected :: Scores
+            , heartsBroken    :: Bool
+            }
 data World = InRound Board Stack Info
             | StartGame
             | StartRound PassDir Scores
@@ -44,8 +50,9 @@ type Board = Seq Hand
 -- This seems like an ideal thing to practice using quickCheck with
 -- namely, no matter what the trick is, should always have at least one valid play
 isValidPlay :: Hand -> Info -> Card -> Bool
-isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
-    let playIf p        = p card || F.all (not . p) hand
+isValidPlay hand info card =
+    let played          = playedSoFar info
+        playIf p        = p card || F.all (not . p) hand
         on_lead         = S.null played
         isFirstTrick    = is2c $ S.index played 0
         matchesLead c   = _suit c == _suit (S.index played 0)
@@ -55,7 +62,7 @@ isValidPlay hand _info@(TrickInfo _ played _ heartsBroken) card =
     -- Note that at the moment, you can't lead the QS if hearts hasn't been broken
     playIf is2c &&
         if on_lead
-        then (not . isGarbage) card || heartsBroken ||  F.all isGarbage hand
+        then (not . isGarbage) card || heartsBroken info ||  F.all isGarbage hand
         else playIf matchesLead && not (isGarbage card && isFirstTrick)
 
 ----

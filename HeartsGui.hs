@@ -3,7 +3,7 @@ module HeartsGui
     )
     where
 
-import PlayingCards
+-- import PlayingCards
 import HeartsCommon
 import HeartsTui (clientTextBased)
 import qualified Data.Set as Z
@@ -20,7 +20,7 @@ import Control.Concurrent.STM
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game (playIO)
 
-data RenderMode = RenderGame RenderInfo GuiState DebugInfo-- (Picture,pos) what player is currently moving
+data RenderMode = RenderGame RenderInfo GuiState DebugInfo MarkIIRender -- (Picture,pos) what player is currently moving
 
 type Depth = Int
 type Bbox  = (Int,Int)
@@ -34,6 +34,8 @@ data MarkIIRender = MarkIIRender
     { zones     :: [Zone]
     , sprites   :: [Sprite]
     }
+emptyWorld :: MarkIIRender
+emptyWorld = MarkIIRender [] []
 
 type DebugInfo = [String]
 
@@ -46,12 +48,12 @@ guiThread inbox outbox
             window
             white			 -- background color
             100              -- steps per second
-            (RenderGame RenderEmpty DisplayOnly [])     -- world
+            (RenderGame RenderEmpty DisplayOnly [] emptyWorld)     -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             commHandle       -- time update
-    where eventHandle event (RenderGame rinfo _gs dbgInfo)
-            = return $ (RenderGame rinfo _gs ((show event):dbgInfo) )
+    where eventHandle event (RenderGame rinfo _gs dbgInfo _mIIworld)
+            = return $ (RenderGame rinfo _gs ((show event):dbgInfo) emptyWorld)
           commHandle _t world
             = do
             -- check inbox
@@ -74,11 +76,11 @@ handleMessage_ outbox world m
     {-atomically $ putTMVar outbox response-}
     _ <- async $ clientTextBased m >>= atomically . putTMVar outbox
     return $ case m of
-        StcRender rinfo -> RenderGame (rinfo) DisplayOnly []
+        StcRender rinfo -> RenderGame (rinfo) DisplayOnly [] emptyWorld
         _ -> world
 
 drawWorld :: RenderMode -> IO Picture
-drawWorld (RenderGame mri _gs debugInfo)
+drawWorld (RenderGame mri _gs debugInfo _mIIrender)
     = do
     -- render debugInfo
     let dbg = Color rose $ Translate (0) (50) $ scale (0.125) (0.125) $ text $ unlines $ take 4 debugInfo

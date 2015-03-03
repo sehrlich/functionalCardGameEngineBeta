@@ -1,14 +1,14 @@
 {-# LANGUAGE ViewPatterns, PatternSynonyms #-} -- for pattern matching on sequences
-{-# OPTIONS_GHC -Wall -fno-warn-unused-imports #-}
+{-# OPTIONS_GHC -Wall #-} -- -fno-warn-unused-imports #-}
 -- {-# LANGUAGE DeriveGeneric, DeriveDataTypeable #-} -- for the serializable nonsense
 -- {-# LANGUAGE TemplateHaskell #-} -- make lenses maybe
 -- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-import PlayingCards
+-- import PlayingCards
 import HeartsCommon
 import HeartsClient
 import qualified Data.Set as Z
-import Data.Sequence ((|>), (<|))
+import Data.Sequence ((|>)) -- , (<|))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 import Control.Monad (void)
@@ -173,9 +173,6 @@ gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores 
                   validate _ = error "recieved wrong type of message"
         Effect move ->
             gameLoop players $ move world'
-
-curPlayer :: Info -> Int
-curPlayer (TrickInfo p _ _ _) = p
 
 computeWinner :: Info -> (PlayerID, Scores, Bool)
 computeWinner (TrickInfo _ played scores broken) =

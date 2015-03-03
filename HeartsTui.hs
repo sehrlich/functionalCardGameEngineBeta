@@ -5,7 +5,6 @@ module HeartsTui
     where
 
 import HeartsCommon
-import PlayingCards
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
@@ -83,14 +82,14 @@ renderText (RenderInRound hand played scores) = do
     putStrLn $ renderTextHand hand
     renderTextScores scores
 
-renderText (RenderServerState board (TrickInfo curPlayer played scores _)) = do
+renderText (RenderServerState board info) = do
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    putStrLn $ renderTextPlay played
-    renderTextBoard board curPlayer
-    renderTextScores scores
+    putStrLn $ renderTextPlay $ playedSoFar info
+    renderTextBoard board $ curPlayer info
+    renderTextScores $ pointsCollected info
 
 renderText (Passing hand _passDir) = putStrLn $ renderTextHand hand
 renderText RenderEmpty = return ()
