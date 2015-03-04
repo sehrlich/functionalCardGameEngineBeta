@@ -29,7 +29,6 @@ data Effect = Effect (World -> World)
 
 data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Show)
 
--- curPlayer, played so far, scores this round, hearts broken
 data Info = TrickInfo
             { curPlayer       :: PlayerID
             , playedSoFar     :: Trick

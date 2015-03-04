@@ -1,4 +1,4 @@
-module PlayingCards 
+module PlayingCards
     ( -- Types
       Suit(..)
     , Card(..)
@@ -16,8 +16,8 @@ module PlayingCards
     -- , stdDeck
     -- , shuffle
     -- trick taking utilities
-    , followsSuit 
-    , trickWinner 
+    , followsSuit
+    , trickWinner
     ) where
 import Data.List (intercalate)
 import Data.Function (on)
@@ -38,11 +38,11 @@ type OrdPile = Seq Card -- ordered
 type Pile = Set Card -- unordered
 type Hand = Pile
 
-instance Show Card 
+instance Show Card
     where show (Card s r) = ("-A23456789TJQKA"!!r) : (head $ show s) : ""
 
 pretty :: Card -> String
-pretty (Card s r) = 
+pretty (Card s r) =
     let (col,pic) = case s of
             Clubs       -> ([1,30,47], "♣")
             Spades      -> ([1,30,47], "♠")
@@ -51,7 +51,7 @@ pretty (Card s r) =
     in colorize col $ ("-A23456789TJQKA"!!r) : pic
 
 readSuit :: Char -> Suit
-readSuit s = case s of 
+readSuit s = case s of
         'c' -> Clubs
         'C' -> Clubs
         'd' -> Diamonds
@@ -63,7 +63,7 @@ readSuit s = case s of
         _ -> error "Unrecognized suit"
 
 readRank :: Char -> Int
-readRank r 
+readRank r
         | r=='A' = 14
         | r=='a' = 14
         | r=='K' = 13
@@ -75,7 +75,7 @@ readRank r
         | r=='T' = 10
         | r=='t' = 10
         | r `elem` "23456789" = read [r] ::Int
-        | otherwise = 0 
+        | otherwise = 0
         -- temporary thing should correspond to card not in hand
 
 readCard :: String -> Maybe Card
@@ -83,8 +83,8 @@ readCard [r,s] = Just (Card (readSuit s) (readRank r))
 readCard _     = Nothing
 
 colorize :: [Int] -> String -> String
-colorize options str = "\ESC[" 
-                        ++ intercalate ";" [show i | i <-options] 
+colorize options str = "\ESC["
+                        ++ intercalate ";" [show i | i <-options]
                         ++ "m" ++ str ++ "\ESC[0m"
 
 _cardback :: String
@@ -93,8 +93,8 @@ _cardback = colorize [104] "()"
 
 {--| Checks that the card played follows suit if able --}
 followsSuit :: Hand -> Trick -> Card -> Bool
-followsSuit hand played card = 
-    let on_lead         = Seq.null played  
+followsSuit hand played card =
+    let on_lead         = Seq.null played
         matchesLead c   = _suit c == _suit (Seq.index played 0)
     in
     on_lead || matchesLead card || F.all (not . matchesLead) hand
@@ -106,8 +106,8 @@ trickWinner played trump =
         (winner, _best_card_val) = F.maximumBy (compare `on` snd) $ flip Seq.mapWithIndex played $ (. (cardVal lead_suit trump)) . (,)
     in
     winner
-    where cardVal lead maybeTrump (Card s1 r1) 
-             = r1 + (if s1==lead then 15 else 0) 
+    where cardVal lead maybeTrump (Card s1 r1)
+             = r1 + (if s1==lead then 15 else 0)
                 + (if Just s1 == maybeTrump then 50 else 0)
 
 orderPile :: Pile -> OrdPile
@@ -149,4 +149,4 @@ shuffle xs = do
   where
     n = length xs
     newArr :: Int -> [a] -> IO (IOArray Int a)
-    newArr n' =  newListArray (1,n') 
+    newArr n' =  newListArray (1,n')
