@@ -14,8 +14,10 @@ import Control.Concurrent.STM
 -- import Control.Concurrent.STM.TMVar
 
 -- may want to consider
--- idSupply Data.Unique.ID or monadSupply or 
+-- idSupply Data.Unique.ID or monadSupply or
 -- Control.Eff.Fresh or some such
+import Data.IntMap.Strict (IntMap)
+import qualified Data.IntMap.Strict as IntMap
 
 import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game (playIO)
@@ -31,11 +33,11 @@ type RenderProcess = IO Picture
 type ClickProcess = IO World
 
 data MarkIIRender = MarkIIRender
-    { zones     :: [Zone]
-    , sprites   :: [Sprite]
+    { zones     :: IntMap Zone
+    , sprites   :: IntMap Sprite
     }
 emptyWorld :: MarkIIRender
-emptyWorld = MarkIIRender [] []
+emptyWorld = MarkIIRender IntMap.empty IntMap.empty
 
 type DebugInfo = [String]
 
@@ -54,10 +56,13 @@ guiThread inbox outbox
             commHandle       -- time update
     where eventHandle event (RenderGame rinfo _gs dbgInfo _mIIworld)
             = return $ (RenderGame rinfo _gs ((show event):dbgInfo) emptyWorld)
+            -- this will need to check zones and see if a click just made needs to
+            -- do one of their things
           commHandle _t world
             = do
             -- check inbox
             message <- atomically $ tryTakeTMVar inbox
+            -- register sprites and zones
             -- return $ maybe world handleMessage message
             maybe (return world) (handleMessage_ outbox world) message
           window = (InWindow
@@ -129,3 +134,14 @@ renderHand hand
 renderPlay :: Trick -> Picture
 renderPlay played = -- "Currently:" ++ F.concat (fmap ((' ':).show ) played)
     Pictures $ F.toList $ S.mapWithIndex (\i -> (translate (80*(fromIntegral i)) (0)). renderCard) played
+
+convertCardID :: Card -> Int
+convertCardID (Card s r) =
+    let s' =
+            case s of
+                Clubs    -> 0
+                Diamonds -> 0
+                Hearts   -> 0
+                Spades   -> 0
+    in
+    50*s'+r
