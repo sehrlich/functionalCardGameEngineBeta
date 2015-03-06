@@ -34,9 +34,10 @@ data RenderWorld = RenderGame
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
 type Bbox          = (Int,Int)
 type Pos           = (Float, Float)
-data Sprite        = Sprite Bbox Pos Picture -- RenderProcess if we need io to render?
+data Sprite        = Sprite Pos Bbox Picture -- RenderProcess if we need io to render?
 data Zone          = Zone
-                    { bbox         :: Bbox
+                    { pos          :: Pos
+                    , bbox         :: Bbox
                     , depth        :: Depth
                     , clickProcess :: ClickProcess
                     }
@@ -50,11 +51,11 @@ data MarkIIRender = MarkIIRender
 emptyWorld :: MarkIIRender
 emptyWorld = MarkIIRender
             (IntMap.singleton 1
-                (Zone (400,300) 0 (\world -> return $ world{_dbgInfo = ["Clicked in window"]})
+                (Zone (0,0) (400,300) 0 (\world -> return $ world{_dbgInfo = ["Clicked in window"]})
                 )
             )
             (IntMap.singleton 1
-                (Sprite (400,300) (0,0) (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))
+                (Sprite (0,0) (400,300) (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))
                 )
             )
 
