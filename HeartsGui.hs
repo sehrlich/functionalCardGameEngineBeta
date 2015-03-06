@@ -32,12 +32,12 @@ data RenderWorld = RenderGame
                 }
 
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
-type Bbox          = (Int,Int)
+type Bbox          = (Float, Float)
 type Pos           = (Float, Float)
-data Sprite        = Sprite Pos Bbox Picture -- RenderProcess if we need io to render?
+data Sprite        = Sprite Location Picture -- RenderProcess if we need io to render?
+data Location      = Location Pos Bbox
 data Zone          = Zone
-                    { pos          :: Pos
-                    , bbox         :: Bbox
+                    { loc          :: Location
                     , depth        :: Depth
                     , clickProcess :: ClickProcess
                     }
@@ -51,13 +51,15 @@ data MarkIIRender = MarkIIRender
 emptyWorld :: MarkIIRender
 emptyWorld = MarkIIRender
             (IntMap.singleton 1
-                (Zone (0,0) (400,300) 0 (\world -> return $ world{_dbgInfo = ["Clicked in window"]})
+                (Zone baseLoc 0 (\world -> return $ world{_dbgInfo = ["Clicked in window"]})
                 )
             )
             (IntMap.singleton 1
-                (Sprite (0,0) (400,300) (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))
+                (Sprite baseLoc (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))
                 )
             )
+baseLoc :: Location
+baseLoc = Location (0,0) (400,300) 
 
 type DebugInfo = [String]
 
@@ -93,20 +95,27 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld)
     = case event of
     EventResize _ws -> return $ curGame
     EventMotion pos -> return $ curGame{_dbgInfo = (show pos):_dbgInfo}
-    EventKey k ks _mod _pos
+    EventKey k ks _mod _mpos
         -> case (k, ks) of
             (MouseButton _, Down)
                 ->
                 -- register the click with an object (zone)
-                let (_i, z) = IntMap.findMin $ IntMap.filter mouseIn $ _zones _mIIworld
+                let (_d, action) = IntMap.foldr cmpDepth (-1, return) $ IntMap.filter mouseIn $ _zones _mIIworld
+                    cmpDepth z (d, a) = let d' = depth z in if d' > d then (d', clickProcess z) else (d, a)
                 -- select the zone with highest depth, and run its on click
-                in clickProcess z curGame
+                in action curGame
             _   -> return $ curGame{_dbgInfo = (show k):_dbgInfo}
-    where mouseIn _zone = True -- test if mousepos is in zone
+        where mouseIn z = isInRegion _mpos (loc z) -- test if mousepos is in zone
 
 -- this will need to check zones and see if a click just made needs to
 -- do one of their things
 
+isInRegion :: (Float, Float) -> Location -> Bool
+isInRegion (mx,my) (Location (cx,cy) (bx,by)) = 
+    cx - bx/2 <= mx 
+    && mx <= cx + bx/2 
+    && cy - by/2 <= my 
+    && my <= cy + by/2
 {-handleMessage :: ServerToClient -> RenderMode
 handleMessage m = undefined-}
 
@@ -130,6 +139,7 @@ drawWorld (RenderGame mri _gs debugInfo mIIrender)
     -- render debugInfo
     let dbg = Color rose $ Translate (-200) (50) $ scale (0.125) (0.125) $ text $ unlines $ take 4 debugInfo
     -- will want to use viewports for pictures
+    -- will also want to render in depth order
     return $ Pictures [dbg, render mri, renderII mIIrender]
 
 renderII :: MarkIIRender -> Picture
@@ -163,7 +173,7 @@ render (BetweenRounds _) = ThickCircle 50 8
     Pictures [playArea, handArea, leftOpp, rightOpp, acrossOpp, debugArea]-}
 
 renderSprite :: Sprite -> Picture
-renderSprite (Sprite _bbox (px,py) pic)
+renderSprite (Sprite (Location (px,py) _bbox) pic)
     = Translate px py $ pic
 
 renderCard :: Card -> Picture
