@@ -15,6 +15,7 @@ module HeartsCommon
     , ServerToClient(..)
     , ClientToServer(..)
     , RenderInfo(..)
+    , Mode(..)
     ) where
 import PlayingCards
 import Data.Sequence (Seq)
@@ -84,3 +85,7 @@ data RenderInfo = RenderServerState Board Info
                 | BetweenRounds Scores
                 | RenderInRound Hand Trick Scores
                 | RenderEmpty
+                | Canonical Mode [(Int,Card)] [String]
+
+-- rename eventually to rendermode after figuring out name conflicts
+data Mode = ObjectList

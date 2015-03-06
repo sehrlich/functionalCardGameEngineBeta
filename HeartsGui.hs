@@ -20,24 +20,43 @@ import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
 import Graphics.Gloss
-import Graphics.Gloss.Interface.IO.Game (playIO)
+--import Graphics.Gloss.Data.Color (makeColor)
+import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 
-data RenderMode = RenderGame RenderInfo GuiState DebugInfo MarkIIRender -- (Picture,pos) what player is currently moving
+data RenderWorld = RenderGame
+                { _receivedInfo :: RenderInfo
+                , _guiState     :: GuiState
+                , _dbgInfo      :: DebugInfo
+                , _markIIworld  :: MarkIIRender
+                -- (Picture,pos) what player is currently moving
+                }
 
-type Depth = Int
-type Bbox  = (Int,Int)
-type Pos   = (Int,Int)
-data Sprite   = Sprite Bbox Pos RenderProcess
-data Zone     = Zone Bbox Depth ClickProcess
-type RenderProcess = IO Picture
-type ClickProcess = IO World
+type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
+type Bbox          = (Int,Int)
+type Pos           = (Float, Float)
+data Sprite        = Sprite Bbox Pos Picture -- RenderProcess if we need io to render?
+data Zone          = Zone
+                    { bbox         :: Bbox
+                    , depth        :: Depth
+                    , clickProcess :: ClickProcess
+                    }
+-- type RenderProcess = IO Picture
+type ClickProcess  = RenderWorld -> IO RenderWorld
 
 data MarkIIRender = MarkIIRender
-    { zones     :: IntMap Zone
-    , sprites   :: IntMap Sprite
+    { _zones     :: IntMap Zone
+    , _sprites   :: IntMap Sprite
     }
 emptyWorld :: MarkIIRender
-emptyWorld = MarkIIRender IntMap.empty IntMap.empty
+emptyWorld = MarkIIRender
+            (IntMap.singleton 1
+                (Zone (400,300) 0 (\world -> return $ world{_dbgInfo = ["Clicked in window"]})
+                )
+            )
+            (IntMap.singleton 1
+                (Sprite (400,300) (0,0) (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))
+                )
+            )
 
 type DebugInfo = [String]
 
@@ -54,11 +73,7 @@ guiThread inbox outbox
             drawWorld        -- picture to display
             eventHandle      -- event handler
             commHandle       -- time update
-    where eventHandle event (RenderGame rinfo _gs dbgInfo _mIIworld)
-            = return $ (RenderGame rinfo _gs ((show event):dbgInfo) emptyWorld)
-            -- this will need to check zones and see if a click just made needs to
-            -- do one of their things
-          commHandle _t world
+    where commHandle _t world
             = do
             -- check inbox
             message <- atomically $ tryTakeTMVar inbox
@@ -69,31 +84,61 @@ guiThread inbox outbox
                    "Gloss" 	    -- window title
                                 -- title fixed for xmonad
                    (800, 600)   -- window size
-                   (10, 10)) 	-- window position
+                   (0, 0)) 	-- window position
+
+
+eventHandle :: Event -> RenderWorld -> IO RenderWorld
+eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld)
+    = case event of
+    EventResize _ws -> return $ curGame
+    EventMotion pos -> return $ curGame{_dbgInfo = (show pos):_dbgInfo}
+    EventKey k ks _mod _pos
+        -> case (k, ks) of
+            (MouseButton _, Down)
+                ->
+                -- register the click with an object (zone)
+                let (_i, z) = IntMap.findMin $ IntMap.filter mouseIn $ _zones _mIIworld
+                -- select the zone with highest depth, and run its on click
+                in clickProcess z curGame
+            _   -> return $ curGame{_dbgInfo = (show k):_dbgInfo}
+    where mouseIn _zone = True -- test if mousepos is in zone
+
+-- this will need to check zones and see if a click just made needs to
+-- do one of their things
 
 {-handleMessage :: ServerToClient -> RenderMode
 handleMessage m = undefined-}
 
-handleMessage_ :: TMVar ClientToServer -> RenderMode -> ServerToClient -> IO RenderMode
-handleMessage_ outbox world m
+handleMessage_ :: TMVar ClientToServer -> RenderWorld -> ServerToClient -> IO RenderWorld
+handleMessage_ outbox world@(RenderGame _ _mode debug mIIworld) m
     = do
     {-response <- clientTextBased m-}
     {-atomically $ putTMVar outbox response-}
     _ <- async $ clientTextBased m >>= atomically . putTMVar outbox
     return $ case m of
-        StcRender rinfo -> RenderGame (rinfo) DisplayOnly [] emptyWorld
+        StcRender rinfo -> do
+            RenderGame (rinfo) DisplayOnly debug (register rinfo mIIworld)
         _ -> world
 
-drawWorld :: RenderMode -> IO Picture
-drawWorld (RenderGame mri _gs debugInfo _mIIrender)
+register :: RenderInfo -> MarkIIRender -> MarkIIRender
+register _rinfo mIIworld = mIIworld
+
+drawWorld :: RenderWorld -> IO Picture
+drawWorld (RenderGame mri _gs debugInfo mIIrender)
     = do
     -- render debugInfo
-    let dbg = Color rose $ Translate (0) (50) $ scale (0.125) (0.125) $ text $ unlines $ take 4 debugInfo
+    let dbg = Color rose $ Translate (-200) (50) $ scale (0.125) (0.125) $ text $ unlines $ take 4 debugInfo
     -- will want to use viewports for pictures
-    return $ Pictures [dbg, render mri]
+    return $ Pictures [dbg, render mri, renderII mIIrender]
+
+renderII :: MarkIIRender -> Picture
+renderII (MarkIIRender _zones sprites)
+    = Pictures $ map renderSprite $ IntMap.elems sprites
+
 
 render :: RenderInfo -> Picture
 render RenderEmpty = Blank
+render (Canonical _mode _objlist _strlist) = Blank
 render (RenderInRound hand played _scores)
     = Pictures
         [ Translate (0) (-200) $ renderHand hand
@@ -116,6 +161,10 @@ render (BetweenRounds _) = ThickCircle 50 8
     in
     Pictures [playArea, handArea, leftOpp, rightOpp, acrossOpp, debugArea]-}
 
+renderSprite :: Sprite -> Picture
+renderSprite (Sprite _bbox (px,py) pic)
+    = Translate px py $ pic
+
 renderCard :: Card -> Picture
 renderCard card
     = Pictures
@@ -135,13 +184,12 @@ renderPlay :: Trick -> Picture
 renderPlay played = -- "Currently:" ++ F.concat (fmap ((' ':).show ) played)
     Pictures $ F.toList $ S.mapWithIndex (\i -> (translate (80*(fromIntegral i)) (0)). renderCard) played
 
-convertCardID :: Card -> Int
-convertCardID (Card s r) =
-    let s' =
-            case s of
-                Clubs    -> 0
-                Diamonds -> 0
-                Hearts   -> 0
-                Spades   -> 0
+_convertCardID :: Card -> Int
+_convertCardID (Card s r) =
+    let s' = case s of
+                Clubs    -> 1
+                Diamonds -> 2
+                Hearts   -> 3
+                Spades   -> 4
     in
     50*s'+r

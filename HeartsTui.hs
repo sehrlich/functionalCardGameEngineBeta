@@ -73,6 +73,12 @@ getInput = do
         Just c -> return c
 
 renderText :: RenderInfo -> IO ()
+renderText (Canonical ObjectList objList strList)
+    = do
+    putStrLn "\ESC[H\ESC[2J"
+    putStrLn $ unwords $ map (pretty . snd) objList
+    mapM_ putStrLn strList
+
 renderText (RenderInRound hand played scores) = do
     -- if we should only be rendering the current players hand then do some checking
     -- the following clears the screen
