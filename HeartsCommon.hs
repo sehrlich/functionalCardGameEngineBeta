@@ -28,24 +28,29 @@ data Effect = Effect (World -> World)
                 | NewTrick
                 | ComputeWinner
 
-data PassDir = PassLeft | PassRight | PassAcross | NoPass deriving (Eq, Show)
+data PassDir = PassLeft
+                | PassRight
+                | PassAcross
+                | NoPass
+                deriving (Eq, Show)
 
-data Info = TrickInfo
-            { curPlayer       :: PlayerID
-            , playedSoFar     :: Trick
-            , pointsCollected :: Scores
-            , heartsBroken    :: Bool
-            }
+data Info =
+    TrickInfo
+    { curPlayer       :: PlayerID
+    , playedSoFar     :: Trick
+    , pointsCollected :: Scores
+    , heartsBroken    :: Bool
+    }
 data World = InRound Board Stack Info
             | StartGame
             | StartRound PassDir Scores
             | PassingPhase Board PassDir
             | RoundOver Scores
             | GameOver Scores
-type Stack = [Effect]
-type Scores = Seq Int
+type Stack    = [Effect]
+type Scores   = Seq Int
 type PlayerID = Int
-type Board = Seq Hand
+type Board    = Seq Hand
 
 -- This seems like an ideal thing to practice using quickCheck with
 -- namely, no matter what the trick is, should always have at least one valid play
@@ -56,8 +61,8 @@ isValidPlay hand info card =
         on_lead         = S.null played
         isFirstTrick    = is2c $ S.index played 0
         matchesLead c   = _suit c == _suit (S.index played 0)
-        is2c c          = c == Card {_suit = Clubs, _rank = 2}
-        isGarbage c     = _suit c == Hearts || c == Card {_suit = Spades, _rank = 12}
+        is2c c          = c       == Card Clubs 2
+        isGarbage c     = _suit c == Hearts || c == Card Spades 12
     in
     -- Note that at the moment, you can't lead the QS if hearts hasn't been broken
     playIf is2c &&
@@ -88,4 +93,5 @@ data RenderInfo = RenderServerState Board Info
                 | Canonical Mode [(Int,Card)] [String]
 
 -- rename eventually to rendermode after figuring out name conflicts
+-- eventually mode will store passing/betweenrounds/renderinround/etc
 data Mode = ObjectList

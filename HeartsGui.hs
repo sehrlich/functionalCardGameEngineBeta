@@ -40,31 +40,20 @@ data Zone          = Zone
                     { depth        :: Depth
                     , clickProcess :: ClickProcess
                     }
+data Target        = Target
+                    { releaseProcess :: ClickProcess
+                    }
 -- type RenderProcess = IO Picture
 type ClickProcess  = RenderWorld -> IO RenderWorld
 
 data MarkIIRender = MarkIIRender
     { zones     :: IntMap Zone -- will want to rename this -- set of things which you can click
+    , targets   :: IntMap Target
     , sprites   :: IntMap Sprite
     , locations :: IntMap Location
-    -- targets -- ie things that you can release cards into 
-    -- may also want to make locations separate
+    -- consider using viewports rather than locations
     , dragged    :: Maybe (Int, Float, Float) -- ID of card currently being draged
     }
-emptyWorld :: MarkIIRender
-emptyWorld = MarkIIRender
-            (IntMap.singleton 1
-                (Zone 0 (\world -> return $ world{_dbgInfo = ["Clicked in window"]})
-                )
-            )
-            (IntMap.singleton 1
-                (Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))
-                )
-            )
-            (IntMap.singleton 1 (Location (0,0) (400,300))
-            )
-            Nothing
-
 type DebugInfo = [String]
 
 data GuiState   = DisplayOnly
@@ -101,32 +90,36 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld)
     EventMotion (mx,my)
         -> case dragged _mIIworld of
             Nothing -> return curGame
-            Just (i,_,_) -> return $ curGame{_dbgInfo = (show (mx,my) ):_dbgInfo
-                                            , _markIIworld = _mIIworld{dragged = Just (i,mx,my)} }
-                        -- update i loc to mousepos
-    EventKey k ks _mod _mpos
+            Just (i,_,_) -> return $ curGame{ _dbgInfo = (show (mx,my) ):_dbgInfo 
+                                            , _markIIworld = _mIIworld{dragged = Just (i,mx,my)} 
+                                            } 
+    EventKey k ks _mod mpos
         -> case (k, ks) of
             (MouseButton _, Down)
                 ->
                 -- register the click with an object (zone)
                 let (_d, action) = IntMap.foldr cmpDepth (-1, return) 
                                     $ IntMap.intersection (zones _mIIworld) 
-                                    $ IntMap.filter (isInRegion _mpos)
+                                    $ IntMap.filter (isInRegion mpos)
                                     $ locations _mIIworld
                     cmpDepth z (d, a) = let d' = depth z in if d' > d then (d', clickProcess z) else (d, a)
                 -- select the zone with highest depth, and run its on click
                 in action curGame
             (MouseButton _, Up)
-                -> return $ case dragged _mIIworld of
+                -> do
+                let _shouldGoOff = IntMap.intersection (targets _mIIworld) $ IntMap.filter (isInRegion mpos) $ locations _mIIworld
+                -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
+                -- if only in generic background target, have sensible move back animation
+                -- curGame' <- IntMap.foldr releaseProcess curGame shouldGoOff
+                return $ case dragged _mIIworld of
                     Nothing -> curGame
                     Just (i,_,_)  -> 
-                        curGame{ _markIIworld 
-                                    = _mIIworld{ dragged = Nothing
-                                                , locations = IntMap.insert i (Location _mpos (80,60)) (locations _mIIworld)
+                        curGame { _markIIworld 
+                                    = _mIIworld { dragged = Nothing
+                                                , locations = IntMap.insert i (Location mpos (80,60)) (locations _mIIworld)
                                                 }
-                                } --adjust i location
-                        -- set i's loc to mpos
-            _   -> return $ curGame{_dbgInfo = (show k ++"\n"):_dbgInfo}
+                                }
+            _   -> return $ curGame
 
 -- this will need to check zones and see if a click just made needs to
 -- do one of their things
@@ -137,8 +130,6 @@ isInRegion (mx,my) (Location (cx,cy) (bx,by)) =
     && mx <= cx + bx/2 
     && cy - by/2 <= my 
     && my <= cy + by/2
-{-handleMessage :: ServerToClient -> RenderMode
-handleMessage m = undefined-}
 
 handleMessage_ :: TMVar ClientToServer -> RenderWorld -> ServerToClient -> IO RenderWorld
 handleMessage_ outbox world@(RenderGame _ _mode debug mIIworld) m
@@ -154,18 +145,24 @@ handleMessage_ outbox world@(RenderGame _ _mode debug mIIworld) m
 register :: RenderInfo -> MarkIIRender -> MarkIIRender
 register (Passing hand _passdir) mIIworld = 
     S.foldrWithIndex rgstr mIIworld (orderPile hand)
-    where rgstr i = registerCard (-350+ 65*(fromIntegral i), -200 )
+    where rgstr i = registerCard (-350+ 55*(fromIntegral i), -200 )
 register _rinfo mIIworld = mIIworld
 
 registerCard :: Pos -> Card -> MarkIIRender -> MarkIIRender
 registerCard pos card world
     = world
-        { zones = IntMap.insert cid (Zone cid $ clickCard card) (zones world)
-        , sprites = IntMap.insert cid (Sprite $ renderCard card) (sprites world)
+        { zones     = IntMap.insert cid z (zones     world)
+        , sprites   = IntMap.insert cid s (sprites   world)
         , locations = IntMap.insert cid l (locations world)
         }
     where cid = convertCardID card
-          clickCard c w = return $ w{_dbgInfo = ((show c):(_dbgInfo w)), _markIIworld = (_markIIworld w){dragged = Just (cid, 0,0)}}
+          clickCard c w = 
+            return $ w{ _dbgInfo = ((show c):(_dbgInfo w))
+                      , _markIIworld = 
+                        (_markIIworld w){ dragged = Just (cid, 0,0) }
+                      }
+          z = Zone cid $ clickCard card
+          s = Sprite   $ renderCard card
           l = Location pos (80,60)
 
 drawWorld :: RenderWorld -> IO Picture
@@ -173,20 +170,46 @@ drawWorld (RenderGame _mri _gs debugInfo mIIrender)
     = do
     -- render debugInfo
     let dbg = Color rose $ Translate (-200) (50) $ scale (0.125) (0.125) $ text $ unlines $ take 4 debugInfo
-    -- will want to use viewports for pictures
     -- will also want to render in depth order
-    return $ Pictures [dbg, {-render mri,-} renderII mIIrender]
+    return $ Pictures [ dbg
+                      {-, render mri-} 
+                      , renderII mIIrender
+                      ]
 
 renderII :: MarkIIRender -> Picture
 renderII mIIw
-    = Pictures (dragging:renderable)
-    where renderable = map renderSprite 
-                        $ IntMap.elems 
-                        $ IntMap.intersectionWith (,) (sprites mIIw) (locations mIIw)
-          dragging = case dragged mIIw of
-                        Just (i,px,py) -> renderSprite ((IntMap.!) (sprites mIIw) i, (Location (px,py) (80,60)))
-                        Nothing -> Blank
+    = Pictures [renderable, dragging]
+    where renderable = 
+            Pictures $ map renderSprite 
+            $ IntMap.elems 
+            $ IntMap.intersectionWith (,) (sprites mIIw) (locations mIIw)
+          dragging = 
+            case dragged mIIw of
+                Just (i,px,py) -> renderSprite ((IntMap.!) (sprites mIIw) i, (Location (px,py) (80,60)))
+                Nothing -> Blank
 
+renderSprite :: (Sprite, Location) -> Picture
+renderSprite ((Sprite pic), (Location (px,py) _bbox))
+    = Translate px py $ pic
+
+renderCard :: Card -> Picture
+renderCard card
+    = Pictures
+        [ Color magenta $ rectangleSolid (60) (80)
+        , Color (greyN 0.875) $ circleSolid 20
+        , Color black $ Translate (-10) (-5) $ Scale (0.125) (0.125) $ Text $ show card
+        , Color black $ rectangleWire (60) (80)
+        ]
+
+convertCardID :: Card -> Int
+convertCardID (Card s r) =
+    let s' = case s of
+                Clubs    -> 1
+                Diamonds -> 2
+                Hearts   -> 3
+                Spades   -> 4
+    in
+    50*s'+r
 
 -- render :: RenderInfo -> Picture
 -- render RenderEmpty = Blank
@@ -213,17 +236,23 @@ renderII mIIw
     in
     Pictures [playArea, handArea, leftOpp, rightOpp, acrossOpp, debugArea]-}
 
-renderSprite :: (Sprite, Location) -> Picture
-renderSprite ((Sprite pic), (Location (px,py) _bbox))
-    = Translate px py $ pic
-
-renderCard :: Card -> Picture
-renderCard card
-    = Pictures
-        [ Color magenta $ rectangleSolid (60) (80)
-        , Color (greyN 0.875) $ circleSolid 20
-        , Color black $ Translate (-10) (-5) $ Scale (0.125) (0.125) $ Text $ show card
-        ]
+emptyWorld :: MarkIIRender
+emptyWorld = MarkIIRender
+            (IntMap.singleton 1
+                (Zone 0 (\world -> return $ world{_dbgInfo = ["Clicked in window"]})
+                )
+            )
+            (IntMap.singleton 1
+                (Target (\world -> return $ world{_dbgInfo = ["Released in window"]})
+                )
+            )
+            (IntMap.singleton 1
+                (Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))
+                )
+            )
+            (IntMap.singleton 1 (Location (0,0) (400,300))
+            )
+            Nothing
 
 {-renderHand :: Hand -> Picture
 renderHand hand
@@ -235,13 +264,3 @@ renderHand hand
 {-renderPlay :: Trick -> Picture
 renderPlay played = -- "Currently:" ++ F.concat (fmap ((' ':).show ) played)
     Pictures $ F.toList $ S.mapWithIndex (\i -> (translate (80*(fromIntegral i)) (0)). renderCard) played-}
-
-convertCardID :: Card -> Int
-convertCardID (Card s r) =
-    let s' = case s of
-                Clubs    -> 1
-                Diamonds -> 2
-                Hearts   -> 3
-                Spades   -> 4
-    in
-    50*s'+r
