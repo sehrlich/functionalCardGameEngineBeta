@@ -7,8 +7,10 @@ Front end
         -- * move render text to being printed on gui, but still
         --     read moves from std input
         -- * draw cards
-        * mouse interaction with cards
+        -- * mouse interaction with cards
+        * let cards request interaction with target
         * remove dependence on cli
+        * use lenses to clear up nested record updates
     Medium/Long term wants for GUI
         sensible text boxes
         menus
