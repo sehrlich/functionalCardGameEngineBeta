@@ -65,7 +65,7 @@ guiThread inbox outbox
             window
             white			 -- background color
             100              -- steps per second
-            (RenderGame RenderEmpty DisplayOnly [] emptyWorld)     -- world
+            (RenderGame RenderEmpty DisplayOnly [] baseWorld)     -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             commHandle       -- time update
@@ -107,18 +107,14 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld)
                 in action curGame
             (MouseButton _, Up)
                 -> do
-                let _shouldGoOff = IntMap.intersection (targets _mIIworld) $ IntMap.filter (isInRegion mpos) $ locations _mIIworld
+                let shouldGoOff = reverse $ map releaseProcess $ IntMap.elems $ IntMap.intersection (targets _mIIworld) $ IntMap.filter (isInRegion mpos) $ locations _mIIworld
                 -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
                 -- if only in generic background target, have sensible move back animation
-                -- curGame' <- IntMap.foldr releaseProcess curGame shouldGoOff
-                return $ case dragged _mIIworld of
-                    Nothing -> curGame
-                    Just (i,_,_)  -> 
-                        curGame { _markIIworld 
-                                    = _mIIworld { dragged = Nothing
-                                                , locations = IntMap.insert i (Location mpos (80,60)) (locations _mIIworld)
-                                                }
-                                }
+                curGame' <- blah (map (=<<) shouldGoOff) $ return curGame
+                return curGame'
+                where blah l a = case l of 
+                                    (x:xs) -> blah xs (x a)
+                                    [] -> a
             _   -> return $ curGame
 
 -- this will need to check zones and see if a click just made needs to
@@ -147,6 +143,15 @@ register (Passing hand _passdir) mIIworld =
     S.foldrWithIndex rgstr mIIworld (orderPile hand)
     where rgstr i = registerCard (-350+ 55*(fromIntegral i), -200 )
 register _rinfo mIIworld = mIIworld
+
+registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Zone -> Maybe Target -> MarkIIRender -> MarkIIRender
+registerGeneric idNo mLoc mSpr mZon mTar world
+    = world
+        { zones     = IntMap.alter (const mZon) idNo (zones     world)
+        , targets   = IntMap.alter (const mTar) idNo (targets   world)
+        , sprites   = IntMap.alter (const mSpr) idNo (sprites   world)
+        , locations = IntMap.alter (const mLoc) idNo (locations world)
+        }
 
 registerCard :: Pos -> Card -> MarkIIRender -> MarkIIRender
 registerCard pos card world
@@ -237,22 +242,50 @@ convertCardID (Card s r) =
     Pictures [playArea, handArea, leftOpp, rightOpp, acrossOpp, debugArea]-}
 
 emptyWorld :: MarkIIRender
-emptyWorld = MarkIIRender
-            (IntMap.singleton 1
-                (Zone 0 (\world -> return $ world{_dbgInfo = ["Clicked in window"]})
-                )
-            )
-            (IntMap.singleton 1
-                (Target (\world -> return $ world{_dbgInfo = ["Released in window"]})
-                )
-            )
-            (IntMap.singleton 1
-                (Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))
-                )
-            )
-            (IntMap.singleton 1 (Location (0,0) (400,300))
-            )
-            Nothing
+emptyWorld = MarkIIRender IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
+           
+baseWorld :: MarkIIRender
+baseWorld = 
+    registerGeneric 1 
+        (Just $ Location (0,0) (400,300))
+        (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
+        (Just $ Zone 0 (\world -> return $ world{_dbgInfo = ["Clicked in play area"]}) )
+        (Just $ 
+            Target (\world -> 
+--                    return $ world{_dbgInfo = "Released in play area":(_dbgInfo world)}
+                    return $ case dragged (_markIIworld world) of
+                        Nothing       -> world{_dbgInfo = "Released in play area":(_dbgInfo world)}
+                        Just (i,mx,my)  -> 
+                            let mIIw = _markIIworld world 
+                            in 
+                            world   { _dbgInfo = "Dropping in play area":(_dbgInfo world)
+                                    , _markIIworld 
+                                    = mIIw  { dragged = Nothing
+                                            , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
+                                            }
+                                    }
+                   )
+        )
+    $ registerGeneric 0 
+        (Just $ Location (0,0) (800,600))
+        (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
+        (Just $ Zone 0 (\world -> return $ world{_dbgInfo = ["Clicked in window"]}) )
+        (Just $ 
+            Target (\world -> 
+                    return $ case dragged (_markIIworld world) of
+                        Nothing       -> world{_dbgInfo = "Released in window":(_dbgInfo world)}
+                        Just (i,mx,my)  -> 
+                            let mIIw = _markIIworld world 
+                            in 
+                            world   { _dbgInfo = "Released in window, dropping back to init pos":(_dbgInfo world)
+                                    , _markIIworld 
+                                    = mIIw  { dragged = Nothing
+                                            -- , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
+                                            }
+                                    }
+                    )
+        )
+    $ emptyWorld
 
 {-renderHand :: Hand -> Picture
 renderHand hand
