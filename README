@@ -24,7 +24,6 @@ Front end
 Klondike
     redo with gui (and maybe client server nonsense)
 Hearts
-    make rendering client responsibility
     maybe:
     -- move to mvc
     -- rpc/servery thing,

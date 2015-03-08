@@ -73,10 +73,7 @@ gameLoop players (RoundOver scores)
     scores' <-
         case moon_shot of
             Nothing -> return scores
-            Just _p -> do
-                -- putStrLn $ "Player " ++ show p ++ " shot the moon"
-                return $ fmap (26-) scores
-    -- send info to clients
+            Just _p -> return $ fmap (26-) scores
     broadcast_ players (StcRender $ BetweenRounds scores')
     return $ RoundOver scores'
 
