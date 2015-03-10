@@ -61,8 +61,9 @@ data MarkIIRender = MarkIIRender
 type DebugInfo = [String]
 
 data GuiState   = DisplayOnly
-                {-| SelectCardsToPass-}
-                {-| SelectCardToPlay-}
+                | SelectCardsToPass
+                | SelectCardToPlay
+
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> IO ()
 guiThread inbox outbox
     = do playIO
@@ -79,7 +80,14 @@ guiThread inbox outbox
             message <- atomically $ tryTakeTMVar inbox
             -- register things that need it
             -- return $ maybe world handleMessage message
-            maybe (return world) (handleMessage_ outbox world) message
+            case message of
+                Nothing -> return ()
+                Just m  -> do
+                            _ <- async $ clientTextBased m >>= atomically . putTMVar outbox
+                            return ()
+            {-response <- clientTextBased message-}
+            {-atomically $ putTMVar outbox response-}
+            maybe (return world) (handleMessage_ world) message
           window = (InWindow
                    "Gloss" 	    -- window title
                                 -- title fixed for xmonad
@@ -130,15 +138,15 @@ isInRegion (mx,my) (Location (cx,cy) (bx,by)) =
     && cy - by/2 <= my
     && my <= cy + by/2
 
-handleMessage_ :: TMVar ClientToServer -> RenderWorld -> ServerToClient -> IO RenderWorld
-handleMessage_ outbox world@(RenderGame _ _mode debug mIIworld) m
+handleMessage_ :: RenderWorld -> ServerToClient -> IO RenderWorld
+handleMessage_ world@(RenderGame _ _mode debug mIIworld) m
     = do
-    {-response <- clientTextBased m-}
-    {-atomically $ putTMVar outbox response-}
-    _ <- async $ clientTextBased m >>= atomically . putTMVar outbox
+    -- need to update mode based on what rinfo we revieve
     return $ case m of
-        StcRender rinfo -> do
+        StcRender rinfo ->
             RenderGame (rinfo) DisplayOnly debug (register rinfo mIIworld)
+        StcGetPassSelection _ _ -> world{ _guiState = SelectCardsToPass}
+        StcGetMove _ _ -> world{ _guiState = SelectCardToPlay}
         _ -> world
 
 register :: RenderInfo -> MarkIIRender -> MarkIIRender
@@ -255,7 +263,8 @@ baseWorld =
         (Just $ Clickable 0 (\world -> return $ world{_dbgInfo = ["Clicked in play area"]}) )
         (Just $
             Target (\world ->
---                    return $ world{_dbgInfo = "Released in play area":(_dbgInfo world)}
+--                  -- we also need this to take into consideration the gui mode
+--                  -- very likely that this is easier to pull out into another function
                     return $ case dragged (_markIIworld world) of
                         Nothing       -> world{_dbgInfo = "Released in play area":(_dbgInfo world)}
                         Just (i,mx,my)  ->
