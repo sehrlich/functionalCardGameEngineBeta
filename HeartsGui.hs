@@ -47,12 +47,14 @@ data Target        = Target
 type ClickProcess  = RenderWorld -> IO RenderWorld
 
 data MarkIIRender = MarkIIRender
+    -- component entity like system
     { clickables :: IntMap Clickable
     , targets    :: IntMap Target
     , sprites    :: IntMap Sprite
     , locations  :: IntMap Location
     -- consider using viewports rather than locations
     , dragged    :: Maybe (Int, Float, Float) -- ID of card currently being draged
+    -- movement paths handed to us
     }
     -- possibly name or debug info or logging deserves a place here
     -- will also want a set of logical zones that arrange things inside of them e,g, hand play
