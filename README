@@ -11,6 +11,8 @@ Front end
         * let cards request interaction with target
         * remove dependence on cli
         * use lenses to clear up nested record updates
+        * disentagle depth/height from id
+        * display images in depth order
     Medium/Long term wants for GUI
         sensible text boxes
         menus
