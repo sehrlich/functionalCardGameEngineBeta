@@ -128,8 +128,7 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld)
                                           $ IntMap.filter (isInRegion mpos) $ locations _mIIworld
                 -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
                 -- if only in generic background target, have sensible move back animation
-                curGame' <- blah (map ((=<<) . ($ mpos)) shouldGoOff) $ return curGame
-                return curGame'
+                blah (map ((=<<) . ($ mpos)) shouldGoOff) $ return curGame
                 where blah l a = case l of
                                     (x:xs) -> blah xs (x a)
                                     [] -> a
@@ -173,6 +172,7 @@ registerCard :: Pos -> Card -> MarkIIRender -> MarkIIRender
 registerCard pos card world
     = world
         { clickables = IntMap.insert cid c (clickables world)
+        , targets    = IntMap.insert cid t (targets    world)
         , sprites    = IntMap.insert cid s (sprites    world)
         , locations  = IntMap.insert cid l (locations  world)
         }
@@ -182,7 +182,11 @@ registerCard pos card world
                       , _markIIworld =
                         (_markIIworld w){ dragged = Just (cid, mx, my) }
                       }
+          dropCard crd _mpos w =
+            return $ w{ _dbgInfo = (("releasing around area of " ++show crd):(_dbgInfo w))
+                      }
           c = Clickable cid $ clickCard card
+          t = Target   $ dropCard card
           s = Sprite   $ renderCard card
           l = Location pos (80,60)
 
