@@ -6,7 +6,7 @@ module HeartsGui
 -- import PlayingCards
 import HeartsCommon
 import HeartsTui (clientTextBased)
---import qualified Data.Set as Z
+import qualified Data.Set as Z
 import qualified Data.Sequence as S
 -- import qualified Data.Foldable as F
 import Control.Concurrent.Async
@@ -61,7 +61,7 @@ data MarkIIRender = MarkIIRender
 type DebugInfo = [String]
 
 data GuiState   = DisplayOnly
-                | SelectCardsToPass
+                | SelectCardsToPass Hand -- should maybe have this as pile
                 | SelectCardToPlay
 
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> IO ()
@@ -121,7 +121,7 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld)
                 -> do
                 -- will clean this up eventually
                 let shouldGoOff = reverse $ map releaseProcess $ IntMap.elems $ IntMap.intersection (targets _mIIworld)
-                                            $ IntMap.filter (isInRegion mpos) $ locations _mIIworld
+                                          $ IntMap.filter (isInRegion mpos) $ locations _mIIworld
                 -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
                 -- if only in generic background target, have sensible move back animation
                 curGame' <- blah (map (=<<) shouldGoOff) $ return curGame
@@ -145,7 +145,7 @@ handleMessage_ world@(RenderGame _ _mode debug mIIworld) m
     return $ case m of
         StcRender rinfo ->
             RenderGame (rinfo) DisplayOnly debug (register rinfo mIIworld)
-        StcGetPassSelection _ _ -> world{ _guiState = SelectCardsToPass}
+        StcGetPassSelection _ _ -> world{ _guiState = SelectCardsToPass Z.empty}
         StcGetMove _ _ -> world{ _guiState = SelectCardToPlay}
         _ -> world
 
@@ -153,6 +153,7 @@ register :: RenderInfo -> MarkIIRender -> MarkIIRender
 register (Passing hand _passdir) mIIworld =
     S.foldrWithIndex rgstr mIIworld (orderPile hand)
     where rgstr i = registerCard (-350+ 55*(fromIntegral i), -200 )
+-- will need to register hand after cards have passed
 register _rinfo mIIworld = mIIworld
 
 registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> MarkIIRender -> MarkIIRender
@@ -272,6 +273,7 @@ baseWorld =
                             in
                             -- try to interpret the card as a move based on latest response
                             -- if can, wrap it and send it back
+                            -- CASES FOR GUISTATE HERE
                             world   { _dbgInfo = "Dropping in play area":(_dbgInfo world)
                                     , _markIIworld
                                     = mIIw  { dragged = Nothing
