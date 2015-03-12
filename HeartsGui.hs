@@ -263,14 +263,19 @@ baseWorld =
                     case (dragged mIIw, _guiState world) of
                         (Nothing, _)       -> world{_dbgInfo = "Released in play area":(_dbgInfo world)}
                         (_, DisplayOnly)   -> world{_dbgInfo = "Released in play area":(_dbgInfo world)}
-                        (Just (i,mx,my), SelectCardsToPass soFar)  ->
-                            -- if okay to send card
-                            world   { _dbgInfo = "Dropping in play area":(_dbgInfo world)
-                                    , _markIIworld
-                                    = mIIw  { dragged = Nothing
-                                            , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
-                                            }
-                                    }
+                        (Just (i,mx,my), SelectCardsToPass soFar) ->
+                            let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
+                            in
+                            if True -- Card not in set and size of set less than 3
+                            then
+                                world   { _dbgInfo = "Dropping in play area":(_dbgInfo world)
+                                        , _markIIworld
+                                        = mIIw  { dragged = Nothing
+                                                , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
+                                                }
+                                        , _guiState = SelectCardsToPass (Z.insert card soFar)
+                                        }
+                            else world
                         (Just (i,mx,my), SelectCardToPlay hand info Nothing)  ->
                             -- let card = (IntMap.! (gameObjects mIIw) i)
                             let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
@@ -288,7 +293,7 @@ baseWorld =
                                             then Just card
                                             else Nothing
                                         }
-                            else world{_dbgInfo = "Not valid play":(_dbgInfo world)}
+                            else world{_dbgInfo = "Not valid play ":(_dbgInfo world)}
                         (Just _, SelectCardToPlay _ _ (Just _))  ->
                                 world{_dbgInfo = "Already selected card to play":(_dbgInfo world)}
                     )
