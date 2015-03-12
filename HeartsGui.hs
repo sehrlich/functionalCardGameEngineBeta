@@ -16,6 +16,7 @@ import Control.Concurrent.STM
 -- may want to consider
 -- idSupply Data.Unique.ID or monadSupply or
 -- Control.Eff.Fresh or some such
+import Data.Maybe (fromJust)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
@@ -30,6 +31,7 @@ data RenderWorld = RenderGame
                 , _markIIworld  :: MarkIIRender
                 -- _animation  --- collect drag and server generated animations
                 -- consider moving inbox and outbox here
+                -- may also need a place to register current effect seeking target
                 }
 
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
@@ -49,10 +51,11 @@ type ClickProcess  = Pos -> RenderWorld -> IO RenderWorld
 
 data MarkIIRender = MarkIIRender
     -- component entity like system
-    { clickables :: IntMap Clickable
-    , targets    :: IntMap Target
-    , sprites    :: IntMap Sprite
-    , locations  :: IntMap Location
+    { clickables  :: IntMap Clickable
+    , targets     :: IntMap Target
+    , sprites     :: IntMap Sprite
+    , locations   :: IntMap Location
+    , gameObjects :: IntMap Card
     -- consider using viewports rather than locations
     , dragged    :: Maybe (Int, Float, Float) -- ID of card currently being draged
     -- movement paths handed to us
@@ -63,7 +66,7 @@ type DebugInfo = [String]
 
 data GuiState   = DisplayOnly
                 | SelectCardsToPass Hand -- should maybe have this as pile
-                | SelectCardToPlay
+                | SelectCardToPlay Hand Info (Maybe Card)
 
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> IO ()
 guiThread inbox outbox
@@ -149,7 +152,7 @@ handleMessage_ world@(RenderGame _ _mode debug mIIworld) m
         StcRender rinfo ->
             RenderGame (rinfo) DisplayOnly debug (register rinfo mIIworld)
         StcGetPassSelection _ _ -> world{ _guiState = SelectCardsToPass Z.empty}
-        StcGetMove _ _ -> world{ _guiState = SelectCardToPlay}
+        StcGetMove hand info -> world{ _guiState = SelectCardToPlay hand info Nothing}
         _ -> world
 
 register :: RenderInfo -> MarkIIRender -> MarkIIRender
@@ -171,10 +174,11 @@ registerGeneric idNo mLoc mSpr mZon mTar world
 registerCard :: Pos -> Card -> MarkIIRender -> MarkIIRender
 registerCard pos card world
     = world
-        { clickables = IntMap.insert cid c (clickables world)
-        , targets    = IntMap.insert cid t (targets    world)
-        , sprites    = IntMap.insert cid s (sprites    world)
-        , locations  = IntMap.insert cid l (locations  world)
+        { clickables  = IntMap.insert cid c    (clickables  world)
+        , targets     = IntMap.insert cid t    (targets     world)
+        , sprites     = IntMap.insert cid s    (sprites     world)
+        , locations   = IntMap.insert cid l    (locations   world)
+        , gameObjects = IntMap.insert cid card (gameObjects world)
         }
     where cid = convertCardID card
           clickCard crd (mx, my) w =
@@ -240,7 +244,7 @@ convertCardID (Card s r) =
     50*s'+r
 
 emptyWorld :: MarkIIRender
-emptyWorld = MarkIIRender IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
+emptyWorld = MarkIIRender IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
 
 baseWorld :: MarkIIRender
 baseWorld =
@@ -253,41 +257,61 @@ baseWorld =
             Target (\_mpos world ->
 --                  -- we also need this to take into consideration the gui mode
 --                  -- very likely that this is easier to pull out into another function
-                    return $ case dragged (_markIIworld world) of
-                        Nothing       -> world{_dbgInfo = "Released in play area":(_dbgInfo world)}
-                        Just (i,mx,my)  ->
-                            let mIIw = _markIIworld world
-                            in
-                            -- try to interpret the card as a move based on latest response
-                            -- if can, wrap it and send it back
-                            -- CASES FOR GUISTATE HERE
+                    let mIIw = _markIIworld world
+                    in
+                    return $
+                    case (dragged mIIw, _guiState world) of
+                        (Nothing, _)       -> world{_dbgInfo = "Released in play area":(_dbgInfo world)}
+                        (_, DisplayOnly)   -> world{_dbgInfo = "Released in play area":(_dbgInfo world)}
+                        (Just (i,mx,my), SelectCardsToPass soFar)  ->
+                            -- if okay to send card
                             world   { _dbgInfo = "Dropping in play area":(_dbgInfo world)
                                     , _markIIworld
                                     = mIIw  { dragged = Nothing
                                             , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
                                             }
                                     }
-                   )
-        )
-    $ registerGeneric 0
-    -- The game window
-        (Just $ Location (0,0) (800,600))
-        (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
-        (Just $ Clickable 0 (\_mpos world -> return $ world{_dbgInfo = ["Clicked in window"]}) )
-        (Just $
-            Target (\_mpos world ->
-                    return $ case dragged (_markIIworld world) of
-                        Nothing       -> world{_dbgInfo = "Released in window":(_dbgInfo world)}
-                        -- Just (i,mx,my)  ->
-                        Just _  ->
-                            let mIIw = _markIIworld world
+                        (Just (i,mx,my), SelectCardToPlay hand info Nothing)  ->
+                            -- let card = (IntMap.! (gameObjects mIIw) i)
+                            let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
                             in
-                            world   { _dbgInfo = "Released in window, dropping back to init pos":(_dbgInfo world)
-                                    , _markIIworld
-                                    = mIIw  { dragged = Nothing
-                                            -- , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
-                                            }
-                                    }
+                            if isValidPlay hand info card
+                            then
+                                world   { _dbgInfo = "Dropping in play area":(_dbgInfo world)
+                                        , _markIIworld
+                                        = mIIw  { dragged = Nothing
+                                                , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
+                                                }
+                                        , _guiState
+                                        = SelectCardToPlay hand info $
+                                            if isValidPlay hand info card
+                                            then Just card
+                                            else Nothing
+                                        }
+                            else world{_dbgInfo = "Not valid play":(_dbgInfo world)}
+                        (Just _, SelectCardToPlay _ _ (Just _))  ->
+                                world{_dbgInfo = "Already selected card to play":(_dbgInfo world)}
+                    )
+            )
+        $ registerGeneric 0
+        -- The game window
+            (Just $ Location (0,0) (800,600))
+            (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
+            (Just $ Clickable 0 (\_mpos world -> return $ world{_dbgInfo = ["Clicked in window"]}) )
+            (Just $
+                Target (\_mpos world ->
+                        return $ case dragged (_markIIworld world) of
+                            Nothing       -> world{_dbgInfo = "Released in window":(_dbgInfo world)}
+                            -- Just (i,mx,my)  ->
+                            Just _  ->
+                                let mIIw = _markIIworld world
+                                in
+                                world   { _dbgInfo = "Released in window, dropping back to init pos":(_dbgInfo world)
+                                        , _markIIworld
+                                        = mIIw  { dragged = Nothing
+                                                -- , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
+                                                }
+                                        }
                     )
         )
     $ emptyWorld
