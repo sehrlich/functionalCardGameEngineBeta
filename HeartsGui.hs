@@ -5,11 +5,11 @@ module HeartsGui
 
 -- import PlayingCards
 import HeartsCommon
-import HeartsTui (clientTextBased)
+-- import HeartsTui (clientTextBased)
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
 -- import qualified Data.Foldable as F
-import Control.Concurrent.Async
+-- import Control.Concurrent.Async
 import Control.Concurrent.STM
 -- import Control.Concurrent.STM.TMVar
 
@@ -77,24 +77,11 @@ guiThread inbox outbox
             (RenderGame RenderEmpty DisplayOnly [] baseWorld)     -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
-            commHandle       -- time update
+            timeHandle       -- time update
             -- It is plausible that we want to replace commHandle here
             -- with a timeHandle that checks commHandle and also checks
             -- animations and so forth
-    where commHandle _t world
-            = do
-            -- check inbox
-            message <- atomically $ tryTakeTMVar inbox
-            -- register things that need it
-            -- return $ maybe world handleMessage message
-            case message of
-                Nothing -> return ()
-                Just m  -> do
-                            _ <- async $ clientTextBased m >>= atomically . putTMVar outbox
-                            return ()
-                            {-response <- clientTextBased message-}
-                            {-atomically $ putTMVar outbox response-}
-            return $ maybe world (handleMessage_ world) message
+    where timeHandle = (commHandle inbox outbox)
           window = (InWindow
                    "Gloss" 	    -- window title
                                 -- title fixed for xmonad
@@ -144,8 +131,52 @@ isInRegion (mx,my) (Location (cx,cy) (bx,by)) =
     && cy - by/2 <= my
     && my <= cy + by/2
 
-handleMessage_ :: RenderWorld -> ServerToClient -> RenderWorld
-handleMessage_ world@(RenderGame _ _mode debug mIIworld) m
+commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> RenderWorld -> IO RenderWorld
+commHandle inbox outbox _t world
+    = do
+
+    -- check inbox
+    message <- atomically $ tryTakeTMVar inbox
+    let acknowledge = do atomically $ putTMVar outbox $ CtsAcknowledge
+    case message of
+        Just StcGameStart  -> acknowledge
+        Just StcGameOver   -> acknowledge
+        Just (StcRender _) -> acknowledge
+        _ -> return ()
+    world' <- case (_guiState world) of
+        DisplayOnly
+            -> return world
+        SelectCardToPlay _ _ Nothing
+            -> return world
+        SelectCardToPlay _ _ (Just c)
+            -> do
+            atomically $ putTMVar outbox $ CtsMove c
+            return $
+                world { _dbgInfo = "sent move ":(_dbgInfo world)
+                        , _guiState = DisplayOnly
+                        }
+        SelectCardsToPass passSet
+            | Z.size passSet == 3
+                -> do
+                atomically $ putTMVar outbox $ CtsPassSelection passSet
+                return $
+                    world { _dbgInfo = "passed cards ":(_dbgInfo world)
+                            , _guiState = DisplayOnly
+                            }
+            | otherwise -> return world
+    return $ maybe world' (handleInMessage_ world') message
+    -- post messages if ready
+{-handleOutMessage_ :: RenderWorld -> Maybe ServerToClient -> Maybe (ClientToServer, RenderWorld)
+handleOutMessage_ world m
+    | m == Just StcGameStart  = acknowledge
+    | m == Just StcGameOver   = acknowledge
+    | m == Just (StcRender _) = acknowledge
+    | _guiState world
+    | otherwise               = Nothing
+    where acknowledge = (Just CtsAcknowledge, world)-}
+
+handleInMessage_ :: RenderWorld -> ServerToClient -> RenderWorld
+handleInMessage_ world@(RenderGame _ _mode debug mIIworld) m
     =
     -- need to update mode based on what rinfo we revieve
     case m of
@@ -160,7 +191,15 @@ register (Passing hand _passdir) mIIworld =
     S.foldrWithIndex rgstr mIIworld (orderPile hand)
     where rgstr i = registerCard (-350+ 55*(fromIntegral i), -200 )
 -- will need to register hand after cards have passed
-register _rinfo mIIworld = mIIworld
+register (RenderInRound hand trick _scores) _mIIworld =
+    flip (S.foldrWithIndex rgstr') trick $
+    S.foldrWithIndex rgstr baseWorld (orderPile hand)
+    where rgstr  i = registerCard (-350+ 55*(fromIntegral i), -200 )
+          rgstr' i = registerCard (-350+ 55*(fromIntegral i), 200  )
+register (RenderServerState _ _) w = w
+register (BetweenRounds _) _w = baseWorld
+register (Canonical _ _ _) w = w
+register (RenderEmpty) _w = emptyWorld
 
 registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> MarkIIRender -> MarkIIRender
 registerGeneric idNo mLoc mSpr mZon mTar world
@@ -266,16 +305,16 @@ baseWorld =
                         (Just (i,mx,my), SelectCardsToPass soFar) ->
                             let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
                             in
-                            if True -- Card not in set and size of set less than 3
-                            then
-                                world   { _dbgInfo = "Dropping in play area":(_dbgInfo world)
+                            if Z.size soFar < 3 && Z.notMember card soFar
+                                -- Card not in set and size of set less than 3
+                            then world  { _dbgInfo = "passing this card ":(_dbgInfo world)
                                         , _markIIworld
                                         = mIIw  { dragged = Nothing
                                                 , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
                                                 }
                                         , _guiState = SelectCardsToPass (Z.insert card soFar)
                                         }
-                            else world
+                            else world  { _dbgInfo = "cannot add card to passing set":(_dbgInfo world)}
                         (Just (i,mx,my), SelectCardToPlay hand info Nothing)  ->
                             -- let card = (IntMap.! (gameObjects mIIw) i)
                             let card = fromJust (IntMap.lookup i (gameObjects mIIw) )

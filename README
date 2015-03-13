@@ -26,6 +26,7 @@ Front end
 Klondike
     redo with gui (and maybe client server nonsense)
 Hearts
+    bug: trick winning may be broken
     maybe:
     -- move to mvc
     -- rpc/servery thing,
