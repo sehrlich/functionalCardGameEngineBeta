@@ -96,9 +96,10 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld)
     EventMotion (mx,my)
         -> case dragged _mIIworld of
             Nothing      -> return curGame
-            Just (i,_,_) -> return $ curGame{ _dbgInfo = (show (mx,my) ):_dbgInfo
-                                            , _markIIworld = _mIIworld{dragged = Just (i,mx,my)}
-                                            }
+            Just (i,_,_) -> return $ curGame 
+                                    { _markIIworld = _mIIworld{dragged = Just (i,mx,my)}
+                                    -- , _dbgInfo = (show (mx,my) ):_dbgInfo
+                                    }
     EventKey k ks _mod mpos
         -> case (k, ks) of
             (MouseButton _, Down)
@@ -152,17 +153,17 @@ commHandle inbox outbox _t world
             -> do
             atomically $ putTMVar outbox $ CtsMove c
             return $
-                world { _dbgInfo = "sent move ":(_dbgInfo world)
-                        , _guiState = DisplayOnly
-                        }
+                world { _guiState = DisplayOnly
+                      -- , _dbgInfo = "sent move ":(_dbgInfo world)
+                      }
         SelectCardsToPass passSet
             | Z.size passSet == 3
                 -> do
                 atomically $ putTMVar outbox $ CtsPassSelection passSet
                 return $
-                    world { _dbgInfo = "passed cards ":(_dbgInfo world)
-                            , _guiState = DisplayOnly
-                            }
+                    world { _guiState = DisplayOnly
+                          -- , _dbgInfo = "passed cards ":(_dbgInfo world)
+                          }
             | otherwise -> return world
     return $ maybe world' (handleInMessage_ world') message
     -- post messages if ready
@@ -220,14 +221,15 @@ registerCard pos card world
         , gameObjects = IntMap.insert cid card (gameObjects world)
         }
     where cid = convertCardID card
-          clickCard crd (mx, my) w =
-            return $ w{ _dbgInfo = ((show crd):(_dbgInfo w))
-                      , _markIIworld =
+          clickCard _crd (mx, my) w =
+            return $ w{ _markIIworld =
                         (_markIIworld w){ dragged = Just (cid, mx, my) }
+                      -- , _dbgInfo = ((show crd):(_dbgInfo w))
                       }
-          dropCard crd _mpos w =
-            return $ w{ _dbgInfo = (("releasing around area of " ++show crd):(_dbgInfo w))
-                      }
+          dropCard _crd _mpos w =
+            return w
+            {-return $ w{ _dbgInfo = (("releasing around area of " ++show crd):(_dbgInfo w))
+                      }-}
           c = Clickable cid $ clickCard card
           t = Target   $ dropCard card
           s = Sprite   $ renderCard card
@@ -237,7 +239,7 @@ drawWorld :: RenderWorld -> IO Picture
 drawWorld (RenderGame _mri _gs debugInfo mIIrender)
     = do
     -- render debugInfo
-    let dbg = Color rose $ Translate (-200) (50) $ scale (0.125) (0.125) $ text $ unlines $ take 4 debugInfo
+    let dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
     -- will also want to render in depth order
     return $ Pictures [ dbg
                       {-, render mri-}
@@ -291,7 +293,7 @@ baseWorld =
     -- The PlayArea
         (Just $ Location (0,0) (400,300))
         (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
-        (Just $ Clickable 0 (\_mpos world -> return $ world{_dbgInfo = ["Clicked in play area"]}) )
+        (Just $ Clickable 0 (\_mpos world -> return $ world {-{_dbgInfo = ["Clicked in play area"]}-} ) )
         (Just $
             Target (\_mpos world ->
 --                  -- we also need this to take into consideration the gui mode
@@ -300,8 +302,8 @@ baseWorld =
                     in
                     return $
                     case (dragged mIIw, _guiState world) of
-                        (Nothing, _)       -> world{_dbgInfo = "Released in play area":(_dbgInfo world)}
-                        (_, DisplayOnly)   -> world{_dbgInfo = "Released in play area":(_dbgInfo world)}
+                        (Nothing, _)       -> world -- {_dbgInfo = "Released in play area":(_dbgInfo world)}
+                        (_, DisplayOnly)   -> world -- {_dbgInfo = "Released in play area":(_dbgInfo world)}
                         (Just (i,mx,my), SelectCardsToPass soFar) ->
                             let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
                             in
@@ -321,17 +323,18 @@ baseWorld =
                             in
                             if isValidPlay hand info card
                             then
-                                world   { _dbgInfo = "Dropping in play area":(_dbgInfo world)
-                                        , _markIIworld
-                                        = mIIw  { dragged = Nothing
-                                                , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
-                                                }
-                                        , _guiState
-                                        = SelectCardToPlay hand info $
-                                            if isValidPlay hand info card
-                                            then Just card
-                                            else Nothing
-                                        }
+                                world   
+                                    { _markIIworld
+                                    = mIIw  { dragged = Nothing
+                                            , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
+                                            }
+                                    , _guiState
+                                    = SelectCardToPlay hand info $
+                                        if isValidPlay hand info card
+                                        then Just card
+                                        else Nothing
+                                    -- , _dbgInfo = "Dropping in play area":(_dbgInfo world)
+                                    }
                             else world{_dbgInfo = "Not valid play ":(_dbgInfo world)}
                         (Just _, SelectCardToPlay _ _ (Just _))  ->
                                 world{_dbgInfo = "Already selected card to play":(_dbgInfo world)}
@@ -341,23 +344,24 @@ baseWorld =
         -- The game window
             (Just $ Location (0,0) (800,600))
             (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
-            (Just $ Clickable 0 (\_mpos world -> return $ world{_dbgInfo = ["Clicked in window"]}) )
+            (Just $ Clickable 0 (\_mpos world -> return $ world {-{_dbgInfo = ["Clicked in window"]}-}) )
             (Just $
                 Target (\_mpos world ->
                         return $ case dragged (_markIIworld world) of
-                            Nothing       -> world{_dbgInfo = "Released in window":(_dbgInfo world)}
+                            Nothing       -> world -- {_dbgInfo = "Released in window":(_dbgInfo world)}
                             -- Just (i,mx,my)  ->
                             Just _  ->
                                 let mIIw = _markIIworld world
                                 in
-                                world   { _dbgInfo = "Released in window, dropping back to init pos":(_dbgInfo world)
-                                        , _markIIworld
-                                        = mIIw  { dragged = Nothing
-                                                -- , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
-                                                }
-                                        }
+                                world   
+                                    { _markIIworld
+                                    = mIIw  { dragged = Nothing
+                                            -- , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
+                                            }
+                                    -- , _dbgInfo = "Released in window, dropping back to init pos":(_dbgInfo world)
+                                    }
                     )
-        )
+            )
     $ emptyWorld
 
 -- render :: RenderInfo -> Picture

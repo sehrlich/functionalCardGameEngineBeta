@@ -172,8 +172,8 @@ gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores 
             gameLoop players $ move world'
 
 computeWinner :: Info -> (PlayerID, Scores, Bool)
-computeWinner (TrickInfo _ played scores broken) =
-    let winner = trickWinner played Nothing
+computeWinner (TrickInfo started played scores broken) =
+    let winner = (trickWinner played Nothing + started) `mod` 4
         pts (Card s r) | s==Hearts = 1
                        | r==12 && s==Spades = 13
                        | otherwise = 0
