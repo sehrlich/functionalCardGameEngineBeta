@@ -99,7 +99,9 @@ followsSuit hand played card =
     in
     on_lead || matchesLead card || F.all (not . matchesLead) hand
 
-{--| Computes the index of the card that won the trick (maybe trump) --}
+{--| Computes the index of the card that won the trick (maybe trump)
+ - Note that this is relative to the first player in the trick
+ - --}
 trickWinner :: Trick -> Maybe Suit -> Int
 trickWinner played trump =
     let lead_suit = _suit $ Seq.index played 0

@@ -96,7 +96,7 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld)
     EventMotion (mx,my)
         -> case dragged _mIIworld of
             Nothing      -> return curGame
-            Just (i,_,_) -> return $ curGame 
+            Just (i,_,_) -> return $ curGame
                                     { _markIIworld = _mIIworld{dragged = Just (i,mx,my)}
                                     -- , _dbgInfo = (show (mx,my) ):_dbgInfo
                                     }
@@ -322,8 +322,7 @@ baseWorld =
                             let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
                             in
                             if isValidPlay hand info card
-                            then
-                                world   
+                            then world
                                     { _markIIworld
                                     = mIIw  { dragged = Nothing
                                             , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
@@ -353,7 +352,7 @@ baseWorld =
                             Just _  ->
                                 let mIIw = _markIIworld world
                                 in
-                                world   
+                                world
                                     { _markIIworld
                                     = mIIw  { dragged = Nothing
                                             -- , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
