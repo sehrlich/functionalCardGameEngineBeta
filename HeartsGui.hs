@@ -34,6 +34,7 @@ data RenderWorld = RenderGame
                 -- may also need a place to register current effect seeking target
                 }
 
+-- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
 type Bbox          = (Float, Float)
 type Pos           = (Float, Float)
@@ -249,6 +250,7 @@ drawWorld (RenderGame _mri _gs debugInfo mIIrender)
 -- If I moved dragged into an animtions record then I'll either
 -- need to make this take the whole world, or, more plausibly,
 -- have a renderAnim separate from renderStatic or something
+-- also consider where textual things are
 renderII :: MarkIIRender -> Picture
 renderII mIIw
     = Pictures [renderable, dragging]
@@ -363,37 +365,3 @@ baseWorld =
             )
     $ emptyWorld
 
--- render :: RenderInfo -> Picture
--- render RenderEmpty = Blank
--- render (Canonical _mode _objlist _strlist) = Blank
--- render (RenderInRound hand played _scores)
---     = Pictures
---         [ Translate (0) (-200) $ renderHand hand
---         , Translate (0) (-50) $ renderPlay played
---         ]
---         -- use viewports for pictures
--- render (RenderServerState _ _) = Circle 2
--- render (Passing hand dir)
---     = Pictures
---         [ Text $ show dir
---         , Translate (0) (-200) $ renderHand hand
---         ]
--- render (BetweenRounds _) = ThickCircle 50 8
-    {-let playArea  = renderPlayArea
-        handArea  = renderHand pos dir hand
-        debugArea = renderDebugArea
-        leftOpp   = renderHand pos dir hand
-        rightOpp  = renderHand pos dir hand
-        acrossOpp = renderHand pos dir hand
-    in
-    Pictures [playArea, handArea, leftOpp, rightOpp, acrossOpp, debugArea]-}
-{-renderHand :: Hand -> Picture
-renderHand hand
-    = Translate (-400) (0)
-    $ Pictures
-        $ zipWith (\i -> translate (65 *i) (0)) [1..]
-        $ map renderCard $ Z.toList hand-}
-
-{-renderPlay :: Trick -> Picture
-renderPlay played = -- "Currently:" ++ F.concat (fmap ((' ':).show ) played)
-    Pictures $ F.toList $ S.mapWithIndex (\i -> (translate (80*(fromIntegral i)) (0)). renderCard) played-}

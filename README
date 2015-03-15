@@ -8,11 +8,12 @@ Front end
         --     read moves from std input
         -- * draw cards
         -- * mouse interaction with cards
-        * let cards request interaction with target
-        * remove dependence on cli
+        -- * let cards request interaction with target
+        -- * remove dependence on cli
         * use lenses to clear up nested record updates
         * disentagle depth/height from id
         * display images in depth order
+        * display sensible text
     Medium/Long term wants for GUI
         sensible text boxes
         menus
