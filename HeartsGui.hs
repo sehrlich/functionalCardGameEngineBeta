@@ -136,46 +136,40 @@ isInRegion (mx,my) (Location (cx,cy) (bx,by)) =
 commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> RenderWorld -> IO RenderWorld
 commHandle inbox outbox _t world
     = do
-
     -- check inbox
     message <- atomically $ tryTakeTMVar inbox
-    let acknowledge = do atomically $ putTMVar outbox $ CtsAcknowledge
-    case message of
-        Just StcGameStart  -> acknowledge
-        Just StcGameOver   -> acknowledge
-        Just (StcRender _) -> acknowledge
-        _ -> return ()
-    world' <- case (_guiState world) of
-        DisplayOnly
-            -> return world
-        SelectCardToPlay _ _ Nothing
-            -> return world
-        SelectCardToPlay _ _ (Just c)
-            -> do
-            atomically $ putTMVar outbox $ CtsMove c
-            return $
-                world { _guiState = DisplayOnly
-                      -- , _dbgInfo = "sent move ":(_dbgInfo world)
-                      }
-        SelectCardsToPass passSet
-            | Z.size passSet == 3
-                -> do
-                atomically $ putTMVar outbox $ CtsPassSelection passSet
-                return $
-                    world { _guiState = DisplayOnly
-                          -- , _dbgInfo = "passed cards ":(_dbgInfo world)
-                          }
-            | otherwise -> return world
+    let (toSend, world') = handleOutMessage_ world message
+    case toSend of
+        Nothing -> return ()
+        Just outMessage -> do atomically $ putTMVar outbox $ outMessage
     return $ maybe world' (handleInMessage_ world') message
-    -- post messages if ready
-{-handleOutMessage_ :: RenderWorld -> Maybe ServerToClient -> Maybe (ClientToServer, RenderWorld)
-handleOutMessage_ world m
-    | m == Just StcGameStart  = acknowledge
-    | m == Just StcGameOver   = acknowledge
-    | m == Just (StcRender _) = acknowledge
-    | _guiState world
-    | otherwise               = Nothing
-    where acknowledge = (Just CtsAcknowledge, world)-}
+     {-post messages if ready-}
+
+handleOutMessage_ :: RenderWorld -> Maybe ServerToClient -> (Maybe ClientToServer, RenderWorld)
+handleOutMessage_ world m =
+    case m of
+    Just StcGameStart  -> acknowledge
+    Just StcGameOver   -> acknowledge
+    Just (StcRender _) -> acknowledge
+    _ ->
+        case (_guiState world) of
+        DisplayOnly -> (Nothing, world)
+        SelectCardToPlay _ _ Nothing -> (Nothing, world)
+        SelectCardToPlay _ _ (Just c) ->
+            ( Just $ CtsMove c
+            , world { _guiState = DisplayOnly
+                    -- , _dbgInfo = "sent move ":(_dbgInfo world)
+                    }
+            )
+        SelectCardsToPass passSet
+            | Z.size passSet == 3 ->
+                ( Just $ CtsPassSelection passSet
+                , world { _guiState = DisplayOnly
+                        -- , _dbgInfo = "passed cards ":(_dbgInfo world)
+                        }
+                )
+            | otherwise -> (Nothing, world)
+    where acknowledge = (Just CtsAcknowledge, world)
 
 handleInMessage_ :: RenderWorld -> ServerToClient -> RenderWorld
 handleInMessage_ world@(RenderGame _ _mode debug mIIworld) m
