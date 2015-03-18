@@ -29,6 +29,7 @@ data RenderWorld = RenderGame
                 , _guiState     :: GuiState
                 , _dbgInfo      :: DebugInfo
                 , _markIIworld  :: MarkIIRender
+                , _position     :: Int
                 -- _animation  --- collect drag and server generated animations
                 -- consider moving inbox and outbox here
                 -- may also need a place to register current effect seeking target
@@ -75,7 +76,7 @@ guiThread inbox outbox
             window
             white			 -- background color
             100              -- steps per second
-            (RenderGame RenderEmpty DisplayOnly [] baseWorld)     -- world
+            (RenderGame RenderEmpty DisplayOnly [] baseWorld (-1))     -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             timeHandle       -- time update
@@ -91,7 +92,7 @@ guiThread inbox outbox
 
 
 eventHandle :: Event -> RenderWorld -> IO RenderWorld
-eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld)
+eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p)
     = case event of
     EventResize _ws -> return $ curGame
     EventMotion (mx,my)
@@ -147,9 +148,10 @@ commHandle inbox outbox _t world
 handleOutMessage_ :: RenderWorld -> Maybe ServerToClient -> (Maybe ClientToServer, RenderWorld)
 handleOutMessage_ world m =
     case m of
-    Just StcGameStart  -> acknowledge
-    Just StcGameOver   -> acknowledge
-    Just (StcRender _) -> acknowledge
+    Just (StcGameStart i) ->
+        (Just CtsAcknowledge, world{_position = i})
+    Just StcGameOver      -> acknowledge
+    Just (StcRender _)    -> acknowledge
     _ ->
         case (_guiState world) of
         DisplayOnly -> (Nothing, world)
@@ -171,12 +173,10 @@ handleOutMessage_ world m =
     where acknowledge = (Just CtsAcknowledge, world)
 
 handleInMessage_ :: RenderWorld -> ServerToClient -> RenderWorld
-handleInMessage_ world@(RenderGame _ _mode debug mIIworld) m
+handleInMessage_ world m
     =
-    -- need to update mode based on what rinfo we revieve
     case m of
-        StcRender rinfo ->
-            RenderGame (rinfo) DisplayOnly debug (register rinfo mIIworld)
+        StcRender rinfo -> world{ _receivedInfo = rinfo, _markIIworld = (register rinfo $ _markIIworld world)}
         StcGetPassSelection _ _ -> world{ _guiState = SelectCardsToPass Z.empty}
         StcGetMove hand info -> world{ _guiState = SelectCardToPlay hand info Nothing}
         _ -> world
@@ -230,7 +230,7 @@ registerCard pos card world
           l = Location pos (80,60)
 
 drawWorld :: RenderWorld -> IO Picture
-drawWorld (RenderGame _mri _gs debugInfo mIIrender)
+drawWorld (RenderGame _mri _gs debugInfo mIIrender _pos)
     = do
     -- render debugInfo
     let dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo

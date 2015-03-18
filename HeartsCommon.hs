@@ -81,7 +81,7 @@ data ClientToServer = CtsMove Card
 
 data ServerToClient = StcGetMove Hand Info
                     | StcGetPassSelection Hand PassDir
-                    | StcGameStart
+                    | StcGameStart Int
                     | StcGameOver
                     | StcRender RenderInfo
 

@@ -27,8 +27,6 @@ import qualified Control.Concurrent.Async as Async
 
 main :: IO ()
 main = do
-        -- _renderer <- constructGUIPlayer
-        -- p0 <- constructPlayer clientTextBased
         p0 <- constructGUIPlayer 0
         p1 <- constructPlayer aiclient 1
         p2 <- constructPlayer aiclient 2
@@ -62,7 +60,7 @@ broadcast_' players message
 gameLoop :: [Player] -> World -> IO World
 gameLoop players StartGame
     = do
-    broadcast_ players StcGameStart
+    broadcast_' players StcGameStart
     gameLoop players $ StartRound PassLeft $ S.fromList [0,0,0,0]
 
 -- dataflow states, may not need to have them
@@ -144,7 +142,7 @@ gameLoop _players (InRound _board [] _info)
 gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores _broken))
     = do
     -- broadcast_' players $ StcRender . \i -> RenderInRound (S.index board i) played scores
-    broadcast_' players $ StcRender . ((flip (flip RenderInRound played) scores).(S.index board) )
+    broadcast_' players $ StcRender . (flip (flip RenderInRound played) scores) . (S.index board)
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty
     case now of
