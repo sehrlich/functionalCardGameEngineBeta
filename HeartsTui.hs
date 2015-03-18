@@ -16,7 +16,7 @@ clientTextBased (StcRender rinfo) = do
     renderText rinfo
     return CtsAcknowledge
 
-clientTextBased StcGameStart = do
+clientTextBased (StcGameStart _) = do
     return CtsAcknowledge
 
 clientTextBased (StcGetMove hand info) = do
