@@ -120,6 +120,7 @@ gameLoop players (PassingPhase deal passDir)
             rotate _ = error "this is not a sequence"
         in do
         broadcast_ players (StcRender $ Passing (deal `S.index` 0) passDir)
+        -- TODO make this a broadcast (i.e. similar to broadcast internal)
         s0 <- getValidatedSelection 0
         s1 <- getValidatedSelection 1
         s2 <- getValidatedSelection 2
@@ -142,18 +143,14 @@ gameLoop _players (InRound _board [] _info)
     -- Fix this case
 gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores _broken))
     = do
-   -- broadcast_' players $ const $ StcRender (RenderServerState board info)
-    broadcast_' players $ \i -> StcRender (RenderInRound (S.index board i) played scores)
+    -- broadcast_' players $ StcRender . \i -> RenderInRound (S.index board i) played scores
+    broadcast_' players $ StcRender . ((flip (flip RenderInRound played) scores).(S.index board) )
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty
     case now of
         NewTrick ->
             gameLoop players $ InRound board (GetInput:GetInput:GetInput:GetInput:ComputeWinner:on_stack) info
-            -- consider computing winner at end of trick
-            -- as new effect so
-            -- 4x get_input : computeWinner : NewTrick
         ComputeWinner ->
-            -- split new trick into here
             let (w,s,b) = computeWinner info
                 nextTrick = TrickInfo w S.empty s b
                 nextStep = if (>0) . Z.size $ board `S.index` 0

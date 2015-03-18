@@ -143,7 +143,6 @@ commHandle inbox outbox _t world
         Nothing -> return ()
         Just outMessage -> do atomically $ putTMVar outbox $ outMessage
     return $ maybe world' (handleInMessage_ world') message
-     {-post messages if ready-}
 
 handleOutMessage_ :: RenderWorld -> Maybe ServerToClient -> (Maybe ClientToServer, RenderWorld)
 handleOutMessage_ world m =
@@ -193,7 +192,7 @@ register (RenderInRound hand trick _scores) _mIIworld =
     where rgstr  i = registerCard (-350+ 55*(fromIntegral i), -200 )
           rgstr' i = registerCard (-350+ 55*(fromIntegral i), 200  )
 register (RenderServerState _ _) w = w
-register (BetweenRounds _) _w = baseWorld
+register (BetweenRounds _) _w = emptyWorld
 register (Canonical _ _ _) w = w
 register (RenderEmpty) _w = emptyWorld
 
@@ -265,7 +264,7 @@ renderCard :: Card -> Picture
 renderCard card
     = Pictures
         [ Color magenta $ rectangleSolid (60) (80)
-        , Color (greyN 0.875) $ circleSolid 20
+        , Color (greyN 0.575) $ circleSolid 20
         , Color black $ Translate (-10) (-5) $ Scale (0.125) (0.125) $ Text $ show card
         , Color black $ rectangleWire (60) (80)
         ]
