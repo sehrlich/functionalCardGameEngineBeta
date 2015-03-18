@@ -78,7 +78,7 @@ aiclient (StcGetPassSelection hand _passDir) = do
     let cardSet = Z.fromList $ take 3 $ Z.toList hand
     return $ CtsPassSelection cardSet
 
-aiclient StcGameStart = return CtsAcknowledge
+aiclient (StcGameStart _ ) = return CtsAcknowledge
 aiclient (StcRender _rinfo) = return CtsAcknowledge
 aiclient StcGameOver = return CtsDisconnect
 ---------------------------------------------
