@@ -70,13 +70,13 @@ data GuiState   = DisplayOnly
                 | SelectCardsToPass Hand -- should maybe have this as pile
                 | SelectCardToPlay Hand Info (Maybe Card)
 
-guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> IO ()
-guiThread inbox outbox
+guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> Int -> IO ()
+guiThread inbox outbox pos
     = do playIO
             window
             white			 -- background color
             100              -- steps per second
-            (RenderGame RenderEmpty DisplayOnly [] baseWorld (-1))     -- world
+            (RenderGame RenderEmpty DisplayOnly [] baseWorld pos)     -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             timeHandle       -- time update

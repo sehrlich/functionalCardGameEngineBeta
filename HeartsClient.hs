@@ -19,11 +19,8 @@ import Control.Concurrent.STM
 -- import Control.Concurrent.STM.TMVar
 
 import Control.Monad (forever)
--- text rendering
 
 type Player = (TMVar ServerToClient, TMVar ClientToServer, ThreadId, Int) -- ??
-
-
 
 constructPlayer :: (ServerToClient -> IO ClientToServer) -> Int -> IO Player
 constructPlayer respondTo pos
@@ -43,7 +40,7 @@ constructGUIPlayer pos
     = do
     inbox  <- newEmptyTMVarIO -- :: (TMVar ServerToClient)
     outbox <- newEmptyTMVarIO -- :: (TMVar ClientToServer)
-    thread <- forkIO $ guiThread inbox outbox
+    thread <- forkIO $ guiThread inbox outbox pos
     return (inbox, outbox, thread, pos)
 
 {-- Client Side code
@@ -53,8 +50,6 @@ constructGUIPlayer pos
  -- it is accessible to both server and client --
  -- my client should always send valid input
  -- if server receives bad messages, it should check them
- --
- -- Also, rendering should go here
  --}
 
 {- The trivial ai -}
@@ -81,12 +76,3 @@ aiclient (StcGetPassSelection hand _passDir) = do
 aiclient (StcGameStart _ ) = return CtsAcknowledge
 aiclient (StcRender _rinfo) = return CtsAcknowledge
 aiclient StcGameOver = return CtsDisconnect
----------------------------------------------
--- Gui stuff
--- Render type
--- and rendering functions that get wrapped up
--- for gloss
---------
--- figure out display
---
------------------------------------------------
