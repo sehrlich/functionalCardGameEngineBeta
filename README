@@ -27,7 +27,9 @@ Front end
 Klondike
     redo with gui (and maybe client server nonsense)
 Hearts
-    bug: trick winning may be broken
+    display cards in trick according to position
+    display scores, pass left/right/across messages
+
     maybe:
     -- move to mvc
     -- rpc/servery thing,
