@@ -21,11 +21,9 @@ Front end
         draggable/clickable objects
         regions
         sensible object overlaps (works with clicking)
-        draw images
+        draw images/bitmaps
     Philosophy
         Gui cannot draw anything the server doesn't tell it about (it may choose not to draw redundant info)
-Klondike
-    redo with gui (and maybe client server nonsense)
 Hearts
     display cards in trick according to position
     display scores, pass left/right/across messages
@@ -38,3 +36,6 @@ Hearts
     -- revamp info with lenses
     -- quickCheck isValidPlay
     -- make some sort of monady thing that ensures player input is always validated
+Spades
+Klondike
+    redo with gui (and maybe client server nonsense)
