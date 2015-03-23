@@ -22,6 +22,7 @@ Front end
         regions
         sensible object overlaps (works with clicking)
         draw images/bitmaps
+        sound and music stuff --- see Kevin Mcleod's site for cc-type music
     Philosophy
         Gui cannot draw anything the server doesn't tell it about (it may choose not to draw redundant info)
 Hearts
