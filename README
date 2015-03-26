@@ -23,6 +23,7 @@ Front end
         sensible object overlaps (works with clicking)
         draw images/bitmaps
         sound and music stuff --- see Kevin Mcleod's site (Incompetech) for cc-type music
+        threepenny gui backend (maybe switch between gloss and threepenny?)
     Philosophy
         Gui cannot draw anything the server doesn't tell it about (it may choose not to draw redundant info)
 Hearts
