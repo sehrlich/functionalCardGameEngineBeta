@@ -152,3 +152,10 @@ shuffle xs = do
     n = length xs
     newArr :: Int -> [a] -> IO (IOArray Int a)
     newArr n' =  newListArray (1,n')
+
+-- AI code
+-- dodging
+-- takes a hand, a trick (and maybe trump) and
+-- selects the highest card it can play that won't win 
+dodging :: Hand -> Trick -> Maybe Suit
+dodging = undefined
