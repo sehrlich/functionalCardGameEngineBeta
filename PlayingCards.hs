@@ -91,6 +91,10 @@ _cardback :: String
 _cardback = colorize [104] "()"
 
 
+{--| Returns all cards that are playable in this trick --}
+playableCards :: Hand -> Trick -> Hand
+playableCards hand trick = undefined
+
 {--| Checks that the card played follows suit if able --}
 followsSuit :: Hand -> Trick -> Card -> Bool
 followsSuit hand played card =
@@ -158,4 +162,4 @@ shuffle xs = do
 -- takes a hand, a trick (and maybe trump) and
 -- selects the highest card it can play that won't win 
 dodging :: Hand -> Trick -> Maybe Suit
-dodging = undefined
+dodging h t ms = undefined
