@@ -93,7 +93,12 @@ _cardback = colorize [104] "()"
 
 {--| Returns all cards that are playable in this trick --}
 playableCards :: Hand -> Trick -> Hand
-playableCards hand trick = undefined
+playableCards hand trick =
+    if Seq.null trick
+    then hand
+    else
+        undefined
+        
 
 {--| Checks that the card played follows suit if able --}
 followsSuit :: Hand -> Trick -> Card -> Bool
