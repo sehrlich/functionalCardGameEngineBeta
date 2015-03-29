@@ -97,7 +97,11 @@ playableCards hand trick =
     if Seq.null trick
     then hand
     else
-        undefined
+       let matchesLead c   = _suit c == _suit (Seq.index trick 0)
+       in
+       if F.any matchesLead hand
+       then Set.filter matchesLead hand
+       else hand
         
 
 {--| Checks that the card played follows suit if able --}
