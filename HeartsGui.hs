@@ -229,6 +229,9 @@ registerCard pos card world
           s = Sprite   $ renderCard card
           l = Location pos (80,60)
 
+registerButton :: Pos -> Sprite -> ClickProcess -> MarkIIRender -> MarkIIRender
+registerButton = undefined -- needs to actually register button
+
 drawWorld :: RenderWorld -> IO Picture
 drawWorld (RenderGame _mri _gs debugInfo mIIrender _pos)
     = do
