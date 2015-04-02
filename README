@@ -43,3 +43,6 @@ Klondike
     redo with gui (and maybe client server nonsense)
 
 Also separate out prototype client gui etc as playing cards is separated
+
+
+logging and replay
