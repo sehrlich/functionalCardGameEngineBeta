@@ -38,7 +38,9 @@ data RenderWorld = RenderGame
 -- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
 type Bbox          = (Float, Float)
-type Pos           = (Float, Float)
+data Pos           = ExactPos (Float, Float)
+                   | HandledBy Zone -- maybe region
+data Zone          = HandArea | PlayArea
 data Sprite        = Sprite Picture -- RenderProcess if we need io to render?
 data Location      = Location Pos Bbox -- will want vector stuff to handle/change locations
 data Clickable     = Clickable
@@ -113,7 +115,7 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p)
                                     $ locations _mIIworld
                     cmpDepth z (d, a) = let d' = depth z in if d' > d then (d', clickProcess z) else (d, a)
                 -- select the zone with highest depth, and run its on click
-                in action mpos curGame
+                in action (ExactPos mpos) curGame
             (MouseButton _, Up)
                 -> do
                 -- will clean this up eventually
@@ -121,14 +123,14 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p)
                                           $ IntMap.filter (isInRegion mpos) $ locations _mIIworld
                 -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
                 -- if only in generic background target, have sensible move back animation
-                blah (map ((=<<) . ($ mpos)) shouldGoOff) $ return curGame
+                blah (map ((=<<) . ($ ExactPos mpos)) shouldGoOff) $ return curGame
                 where blah l a = case l of
                                     (x:xs) -> blah xs (x a)
                                     [] -> a
             _   -> return $ curGame
 
 isInRegion :: (Float, Float) -> Location -> Bool
-isInRegion (mx,my) (Location (cx,cy) (bx,by)) =
+isInRegion (mx,my) (Location (ExactPos (cx,cy)) (bx,by)) =
     cx - bx/2 <= mx
     && mx <= cx + bx/2
     && cy - by/2 <= my
@@ -184,13 +186,13 @@ handleInMessage_ world m
 register :: RenderInfo -> MarkIIRender -> MarkIIRender
 register (Passing hand _passdir) mIIworld =
     S.foldrWithIndex rgstr mIIworld (orderPile hand)
-    where rgstr i = registerCard (-350+ 55*(fromIntegral i), -200 )
+    where rgstr i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
 -- will need to register hand after cards have passed
 register (RenderInRound hand trick _scores) _mIIworld =
     flip (S.foldrWithIndex rgstr') trick $
     S.foldrWithIndex rgstr baseWorld (orderPile hand)
-    where rgstr  i = registerCard (-350+ 55*(fromIntegral i), -200 )
-          rgstr' i = registerCard (-350+ 55*(fromIntegral i), 200  )
+    where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
+          rgstr' i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), 200  ) -- Switch to PlayArea
 register (RenderServerState _ _) w = w
 register (BetweenRounds _) _w = emptyWorld
 register (Canonical _ _ _) w = w
@@ -215,7 +217,7 @@ registerCard pos card world
         , gameObjects = IntMap.insert cid card (gameObjects world)
         }
     where cid = convertCardID card
-          clickCard _crd (mx, my) w =
+          clickCard _crd (ExactPos (mx, my)) w =
             return $ w{ _markIIworld =
                         (_markIIworld w){ dragged = Just (cid, mx, my) }
                       -- , _dbgInfo = ((show crd):(_dbgInfo w))
@@ -256,11 +258,12 @@ renderII mIIw
             $ IntMap.intersectionWith (,) (sprites mIIw) (locations mIIw)
           dragging =
             case dragged mIIw of
-                Just (i,px,py) -> renderSprite ((IntMap.!) (sprites mIIw) i, (Location (px,py) (80,60)))
+                Just (i,px,py) -> renderSprite ((IntMap.!) (sprites mIIw) i, (Location (ExactPos (px,py)) (80,60)))
                 Nothing -> Blank
 
+-- Will need a way to turn a location into coordinates
 renderSprite :: (Sprite, Location) -> Picture
-renderSprite ((Sprite pic), (Location (px,py) _bbox))
+renderSprite ((Sprite pic), (Location (ExactPos (px,py)) _bbox))
     = Translate px py $ pic
 
 renderCard :: Card -> Picture
@@ -289,7 +292,7 @@ baseWorld :: MarkIIRender
 baseWorld =
     registerGeneric 1
     -- The PlayArea
-        (Just $ Location (0,0) (400,300))
+        (Just $ Location (ExactPos (0,0)) (400,300))
         (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
         (Just $ Clickable 0 (\_mpos world -> return $ world {-{_dbgInfo = ["Clicked in play area"]}-} ) )
         (Just $
@@ -310,7 +313,7 @@ baseWorld =
                             then world  { _dbgInfo = "passing this card ":(_dbgInfo world)
                                         , _markIIworld
                                         = mIIw  { dragged = Nothing
-                                                , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
+                                                , locations = IntMap.insert i (Location (ExactPos (mx,my)) (80,60)) (locations mIIw)
                                                 }
                                         , _guiState = SelectCardsToPass (Z.insert card soFar)
                                         }
@@ -323,7 +326,7 @@ baseWorld =
                             then world
                                     { _markIIworld
                                     = mIIw  { dragged = Nothing
-                                            , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
+                                            , locations = IntMap.insert i (Location (ExactPos (mx,my)) (80,60)) (locations mIIw)
                                             }
                                     , _guiState
                                     = SelectCardToPlay hand info $
@@ -339,7 +342,7 @@ baseWorld =
             )
         $ registerGeneric 0
         -- The game window
-            (Just $ Location (0,0) (800,600))
+            (Just $ Location (ExactPos (0,0)) (800,600))
             (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
             (Just $ Clickable 0 (\_mpos world -> return $ world {-{_dbgInfo = ["Clicked in window"]}-}) )
             (Just $
