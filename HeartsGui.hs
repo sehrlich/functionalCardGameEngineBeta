@@ -33,17 +33,16 @@ data RenderWorld = RenderGame
                 -- _animation  --- collect drag and server generated animations
                 -- consider moving inbox and outbox here
                 -- may also need a place to register current effect seeking target
-                -- also need zones here or somewhere
                 }
 
 -- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
 type Bbox          = (Float, Float)
-data Pos           = ExactPos (Float, Float)
-                   | HandledBy Zone -- maybe region
-data Zone          = HandArea | PlayArea
+type Pos           = (Float, Float)
+data Zone          = HandArea | PlayArea | ExactPos Pos
+-- zones may map ids to positions
 data Sprite        = Sprite Picture -- RenderProcess if we need io to render?
-data Location      = Location Pos Bbox -- will want vector stuff to handle/change locations
+data Location      = Location Zone Bbox -- will want vector stuff to handle/change locations
 data Clickable     = Clickable
                     { depth        :: Depth
                     , clickProcess :: ClickProcess
@@ -64,6 +63,7 @@ data MarkIIRender = MarkIIRender
     -- consider using viewports rather than locations
     , dragged    :: Maybe (Int, Float, Float) -- ID of card currently being draged
     -- movement paths handed to us
+    -- need Zones
     }
     -- possibly name or debug info or logging deserves a place here
     -- will also want a set of logical zones that arrange things inside of them e,g, hand play
@@ -116,7 +116,7 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p)
                                     $ locations _mIIworld
                     cmpDepth z (d, a) = let d' = depth z in if d' > d then (d', clickProcess z) else (d, a)
                 -- select the zone with highest depth, and run its on click
-                in action (ExactPos mpos) curGame
+                in action mpos curGame
             (MouseButton _, Up)
                 -> do
                 -- will clean this up eventually
@@ -124,7 +124,7 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p)
                                           $ IntMap.filter (isInRegion mpos) $ locations _mIIworld
                 -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
                 -- if only in generic background target, have sensible move back animation
-                blah (map ((=<<) . ($ ExactPos mpos)) shouldGoOff) $ return curGame
+                blah (map ((=<<) . ($ mpos)) shouldGoOff) $ return curGame
                 where blah l a = case l of
                                     (x:xs) -> blah xs (x a)
                                     [] -> a
@@ -208,7 +208,7 @@ registerGeneric idNo mLoc mSpr mZon mTar world
         , locations  = IntMap.alter (const mLoc) idNo (locations  world)
         }
 
-registerCard :: Pos -> Card -> MarkIIRender -> MarkIIRender
+registerCard :: Zone -> Card -> MarkIIRender -> MarkIIRender
 registerCard pos card world
     = world
         { clickables  = IntMap.insert cid c    (clickables  world)
@@ -218,7 +218,7 @@ registerCard pos card world
         , gameObjects = IntMap.insert cid card (gameObjects world)
         }
     where cid = convertCardID card
-          clickCard _crd (ExactPos (mx, my)) w =
+          clickCard _crd (mx, my) w =
             return $ w{ _markIIworld =
                         (_markIIworld w){ dragged = Just (cid, mx, my) }
                       -- , _dbgInfo = ((show crd):(_dbgInfo w))
