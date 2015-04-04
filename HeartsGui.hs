@@ -33,6 +33,7 @@ data RenderWorld = RenderGame
                 -- _animation  --- collect drag and server generated animations
                 -- consider moving inbox and outbox here
                 -- may also need a place to register current effect seeking target
+                -- also need zones here or somewhere
                 }
 
 -- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
