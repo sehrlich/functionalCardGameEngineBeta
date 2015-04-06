@@ -41,6 +41,8 @@ type Bbox          = (Float, Float)
 type Pos           = (Float, Float)
 data Zone          = HandArea | PlayArea | ExactPos Pos
 -- zones may map ids to positions
+-- may want to let zone hold zones
+-- and right now zone + location are tangled
 data Sprite        = Sprite Picture -- RenderProcess if we need io to render?
 data Location      = Location Zone Bbox -- will want vector stuff to handle/change locations
 data Clickable     = Clickable
@@ -136,6 +138,7 @@ isInRegion (mx,my) (Location (ExactPos (cx,cy)) (bx,by)) =
     && mx <= cx + bx/2
     && cy - by/2 <= my
     && my <= cy + by/2
+isInRegion _ _ = False -- hand area play area etc. not checking properly
 
 commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> RenderWorld -> IO RenderWorld
 commHandle inbox outbox _t world
@@ -266,6 +269,7 @@ renderII mIIw
 renderSprite :: (Sprite, Location) -> Picture
 renderSprite ((Sprite pic), (Location (ExactPos (px,py)) _bbox))
     = Translate px py $ pic
+-- not correct way to render something in a zone
 
 renderCard :: Card -> Picture
 renderCard card
