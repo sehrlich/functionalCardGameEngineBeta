@@ -235,8 +235,15 @@ registerCard pos card world
           s = Sprite   $ renderCard card
           l = Location pos (80,60)
 
-registerButton :: Pos -> Sprite -> ClickProcess -> MarkIIRender -> MarkIIRender
-registerButton = undefined -- needs to actually register button
+registerButton :: Location -> Sprite -> ClickProcess -> MarkIIRender -> MarkIIRender
+-- registerButton = undefined -- needs to actually register button
+registerButton loc img action world
+    = world
+        { targets   = IntMap.insert bid (Target action) (targets   world)
+        , sprites   = IntMap.insert bid img             (sprites   world)
+        , locations = IntMap.insert bid loc             (locations world)
+        }
+    where bid = 37-- generate button id
 
 drawWorld :: RenderWorld -> IO Picture
 drawWorld (RenderGame _mri _gs debugInfo mIIrender _pos)
