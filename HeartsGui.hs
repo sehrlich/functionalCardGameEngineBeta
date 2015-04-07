@@ -39,7 +39,15 @@ data RenderWorld = RenderGame
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
 type Bbox          = (Float, Float)
 type Pos           = (Float, Float)
+{- Zones are data structures to handle and organize objects on the screen
+ - they should support the following operations
+ - query if objectid is handled by zone
+ - return location/position of valid objectids for rendering
+ - accept objectid to be handled
+ - delete objectid (i.e. stop representing them)
+ -}
 data Zone          = HandArea | PlayArea | ExactPos Pos
+-- with the above in mind, handarea playarea and exactpos (maybe should be window) should be variables maybe?
 -- zones may map ids to positions
 -- may want to let zone hold zones
 -- and right now zone + location are tangled
@@ -263,6 +271,7 @@ drawWorld (RenderGame _mri _gs debugInfo mIIrender _pos)
 renderII :: MarkIIRender -> Picture
 renderII mIIw
     = Pictures [renderable, dragging]
+    -- the proper alternative here is to iterate over zones rendering everything inside them
     where renderable =
             Pictures $ map renderSprite
             $ IntMap.elems
@@ -273,6 +282,7 @@ renderII mIIw
                 Nothing -> Blank
 
 -- Will need a way to turn a location into coordinates
+-- will be made obsolete when zones come online
 renderSprite :: (Sprite, Location) -> Picture
 renderSprite ((Sprite pic), (Location (ExactPos (px,py)) _bbox))
     = Translate px py $ pic
