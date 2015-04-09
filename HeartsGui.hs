@@ -288,6 +288,9 @@ renderSprite ((Sprite pic), (Location (ExactPos (px,py)) _bbox))
     = Translate px py $ pic
 -- not correct way to render something in a zone
 
+renderZone :: Zone -> Picture
+renderZone = undefined
+
 renderCard :: Card -> Picture
 renderCard card
     = Pictures
