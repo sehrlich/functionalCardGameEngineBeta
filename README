@@ -47,6 +47,8 @@ Also separate out prototype client gui etc as playing cards is separated
 
 logging and replay
 stuff for tutorials/scenarios
+    scripted events
+    messages
 menus
 zones
 default ways of doing selection in a zone -- i.e. select and unselect until click done
