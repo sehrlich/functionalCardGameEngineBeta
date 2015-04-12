@@ -68,7 +68,7 @@ data MarkIIRender = MarkIIRender
     { clickables  :: IntMap Clickable
     , targets     :: IntMap Target
     , sprites     :: IntMap Sprite
-    , locations   :: IntMap Location
+    , locations   :: IntMap Location -- should go through zones
     , gameObjects :: IntMap Card
     -- consider using viewports rather than locations
     , dragged    :: Maybe (Int, Float, Float) -- ID of card currently being draged
