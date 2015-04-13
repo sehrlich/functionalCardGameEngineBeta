@@ -29,13 +29,17 @@ import Graphics.Gloss
 --import Graphics.Gloss.Data.Color (makeColor)
 import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 
+data GuiWorld = GuiWorld
+                { _renderWorld :: RenderWorld
+                , _markIIworld  :: MarkIIRender
+                , _idSupply     :: Supply
+                }
+
 data RenderWorld = RenderGame
                 { _receivedInfo :: RenderInfo
                 , _guiState     :: GuiState
                 , _dbgInfo      :: DebugInfo
-                , _markIIworld  :: MarkIIRender
-                , _position     :: Int
-                , _idSupply     :: Supply
+                , _position     :: Int          -- Player position
                 -- _animation  --- collect drag and server generated animations
                 -- consider moving inbox and outbox here
                 -- may also need a place to register current effect seeking target
@@ -67,7 +71,7 @@ data Target        = Target
                     { releaseProcess :: ClickProcess
                     }
 -- type RenderProcess = IO Picture
-type ClickProcess  = Pos -> RenderWorld -> IO RenderWorld
+type ClickProcess  = Pos -> GuiWorld -> IO GuiWorld
 
 data MarkIIRender = MarkIIRender
     -- component entity like system
@@ -97,7 +101,7 @@ guiThread inbox outbox pos
             window
             white			 -- background color
             100              -- steps per second
-            (RenderGame RenderEmpty DisplayOnly [] baseWorld pos idSupply)     -- world
+            (GuiWorld (RenderGame RenderEmpty DisplayOnly [] pos) baseWorld idSupply)  -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             timeHandle       -- time update
@@ -112,15 +116,16 @@ guiThread inbox outbox pos
                    (0, 0)) 	-- window position
 
 
-eventHandle :: Event -> RenderWorld -> IO RenderWorld
-eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p _idSup)
-    = case event of
-    EventResize _ws -> return $ curGame
+eventHandle :: Event -> GuiWorld -> IO GuiWorld
+eventHandle event world -- curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p _idSup)
+    = let mIIw = _markIIworld world
+    in case event of
+    EventResize _ws -> return $ world
     EventMotion (mx,my)
-        -> case dragged _mIIworld of
-            Nothing      -> return curGame
-            Just (i,_,_) -> return $ curGame
-                                    { _markIIworld = _mIIworld{dragged = Just (i,mx,my)}
+        -> case dragged (_markIIworld world) of
+            Nothing      -> return world
+            Just (i,_,_) -> return $ world
+                                    { _markIIworld = mIIw{dragged = Just (i,mx,my)}
                                     -- , _dbgInfo = (show (mx,my) ):_dbgInfo
                                     }
     EventKey k ks _mod mpos
@@ -129,24 +134,25 @@ eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p _idSup)
                 ->
                 -- register the click with an object (clickable)
                 let (_d, action) = IntMap.foldr cmpDepth (-1, const return)
-                                    $ IntMap.intersection (clickables _mIIworld)
+                                    $ IntMap.intersection (clickables mIIw)
                                     $ IntMap.filter (isInRegion mpos)
-                                    $ locations _mIIworld
+                                    $ locations mIIw
                     cmpDepth z (d, a) = let d' = depth z in if d' > d then (d', clickProcess z) else (d, a)
                 -- select the zone with highest depth, and run its on click
-                in action mpos curGame
+                in action mpos world
             (MouseButton _, Up)
                 -> do
                 -- will clean this up eventually
-                let shouldGoOff = reverse $ map releaseProcess $ IntMap.elems $ IntMap.intersection (targets _mIIworld)
-                                          $ IntMap.filter (isInRegion mpos) $ locations _mIIworld
+                let shouldGoOff = reverse $ map releaseProcess $ IntMap.elems $ IntMap.intersection (targets mIIw)
+                                          $ IntMap.filter (isInRegion mpos) $ locations mIIw
                 -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
                 -- if only in generic background target, have sensible move back animation
-                blah (map ((=<<) . ($ mpos)) shouldGoOff) $ return curGame
+                -- give this the proper name rather than blah
+                blah (map ((=<<) . ($ mpos)) shouldGoOff) $ return world
                 where blah l a = case l of
                                     (x:xs) -> blah xs (x a)
                                     [] -> a
-            _   -> return $ curGame
+            _   -> return $ world
 
 isInRegion :: (Float, Float) -> Location -> Bool
 isInRegion (mx,my) (Location (ExactPos (cx,cy)) (bx,by)) =
@@ -156,12 +162,13 @@ isInRegion (mx,my) (Location (ExactPos (cx,cy)) (bx,by)) =
     && my <= cy + by/2
 isInRegion _ _ = False -- hand area play area etc. not checking properly
 
-commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> RenderWorld -> IO RenderWorld
+commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> GuiWorld -> IO GuiWorld
 commHandle inbox outbox _t world
     = do
     -- check inbox
     message <- atomically $ tryTakeTMVar inbox
-    let (toSend, world') = handleOutMessage_ world message
+    let (toSend, renderWorld) = handleOutMessage_ (_renderWorld world) message
+        world' = world{_renderWorld = renderWorld}
     case toSend of
         Nothing -> return ()
         Just outMessage -> do atomically $ putTMVar outbox $ outMessage
@@ -194,13 +201,14 @@ handleOutMessage_ world m =
             | otherwise -> (Nothing, world)
     where acknowledge = (Just CtsAcknowledge, world)
 
-handleInMessage_ :: RenderWorld -> ServerToClient -> RenderWorld
+-- TODO fix this, maybe with lenses, maybe just with a principled reorganization of guiworld and constituents
+handleInMessage_ :: GuiWorld -> ServerToClient -> GuiWorld
 handleInMessage_ world m
     =
     case m of
-        StcRender rinfo -> world{ _receivedInfo = rinfo, _markIIworld = (register rinfo $ _markIIworld world)}
-        StcGetPassSelection _ _ -> world{ _guiState = SelectCardsToPass Z.empty}
-        StcGetMove hand info -> world{ _guiState = SelectCardToPlay hand info Nothing}
+        StcRender rinfo -> world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}, _markIIworld = (register rinfo $ _markIIworld world)}
+        StcGetPassSelection _ _ -> world{ _renderWorld = (_renderWorld world){_guiState = SelectCardsToPass Z.empty} }
+        StcGetMove hand info -> world{ _renderWorld = (_renderWorld world){_guiState = SelectCardToPlay hand info Nothing} }
         _ -> world
 
 register :: RenderInfo -> MarkIIRender -> MarkIIRender
@@ -237,6 +245,7 @@ registerCard pos card world
         , gameObjects = IntMap.insert cid card (gameObjects world)
         }
     where cid = convertCardID card
+          -- cid will be changed to come from Supply
           clickCard _crd (mx, my) w =
             return $ w{ _markIIworld =
                         (_markIIworld w){ dragged = Just (cid, mx, my) }
@@ -261,11 +270,13 @@ registerButton loc img action world
         }
     where bid = 37-- generate button id
 
-drawWorld :: RenderWorld -> IO Picture
-drawWorld (RenderGame _mri _gs debugInfo mIIrender _pos _idSup)
+drawWorld :: GuiWorld -> IO Picture
+drawWorld world--(RenderGame _mri _gs debugInfo mIIrender _pos _idSup)
     = do
     -- render debugInfo
-    let dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
+    let debugInfo = _dbgInfo $ _renderWorld world
+        mIIrender = _markIIworld world
+        dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
     -- will also want to render in depth order
     return $ Pictures [ dbg
                       {-, render mri-}
@@ -332,46 +343,50 @@ baseWorld =
             Target (\_mpos world ->
 --                  -- we also need this to take into consideration the gui mode
 --                  -- very likely that this is easier to pull out into another function
-                    let mIIw = _markIIworld world
-                    in
-                    return $
-                    case (dragged mIIw, _guiState world) of
-                        (Nothing, _)       -> world -- {_dbgInfo = "Released in play area":(_dbgInfo world)}
-                        (_, DisplayOnly)   -> world -- {_dbgInfo = "Released in play area":(_dbgInfo world)}
-                        (Just (i,mx,my), SelectCardsToPass soFar) ->
-                            let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
-                            in
-                            if Z.size soFar < 3 && Z.notMember card soFar
-                                -- Card not in set and size of set less than 3
-                            then world  { _dbgInfo = "passing this card ":(_dbgInfo world)
-                                        , _markIIworld
-                                        = mIIw  { dragged = Nothing
-                                                , locations = IntMap.insert i (Location (ExactPos (mx,my)) (80,60)) (locations mIIw)
-                                                }
-                                        , _guiState = SelectCardsToPass (Z.insert card soFar)
-                                        }
-                            else world  { _dbgInfo = "cannot add card to passing set":(_dbgInfo world)}
-                        (Just (i,mx,my), SelectCardToPlay hand info Nothing)  ->
-                            -- let card = (IntMap.! (gameObjects mIIw) i)
-                            let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
-                            in
-                            if isValidPlay hand info card
-                            then world
-                                    { _markIIworld
+                let mIIw = _markIIworld world
+                    renW = _renderWorld world
+                in
+                return $
+                case (dragged mIIw, _guiState renW) of
+                    (Nothing, _)       -> world -- {_dbgInfo = "Released in play area":(_dbgInfo world)}
+                    (_, DisplayOnly)   -> world -- {_dbgInfo = "Released in play area":(_dbgInfo world)}
+                    (Just (i,mx,my), SelectCardsToPass soFar) ->
+                        let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
+                        in
+                        if Z.size soFar < 3 && Z.notMember card soFar
+                            -- Card not in set and size of set less than 3
+                        then world  { _renderWorld 
+                                    = renW  { _dbgInfo = "passing this card ":(_dbgInfo renW)
+                                            , _guiState = SelectCardsToPass (Z.insert card soFar)
+                                            }
+                                    , _markIIworld
                                     = mIIw  { dragged = Nothing
                                             , locations = IntMap.insert i (Location (ExactPos (mx,my)) (80,60)) (locations mIIw)
                                             }
-                                    , _guiState
-                                    = SelectCardToPlay hand info $
-                                        if isValidPlay hand info card
-                                        then Just card
-                                        else Nothing
-                                    -- , _dbgInfo = "Dropping in play area":(_dbgInfo world)
                                     }
-                            else world{_dbgInfo = "Not valid play ":(_dbgInfo world)}
-                        (Just _, SelectCardToPlay _ _ (Just _))  ->
-                                world{_dbgInfo = "Already selected card to play":(_dbgInfo world)}
-                    )
+                        else world  { _renderWorld = renW{_dbgInfo = "cannot add card to passing set":(_dbgInfo renW)}}
+                    (Just (i,mx,my), SelectCardToPlay hand info Nothing)  ->
+                        -- let card = (IntMap.! (gameObjects mIIw) i)
+                        let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
+                        in
+                        if isValidPlay hand info card
+                        then world
+                                { _markIIworld
+                                = mIIw  { dragged = Nothing
+                                        , locations = IntMap.insert i (Location (ExactPos (mx,my)) (80,60)) (locations mIIw)
+                                        }
+                                , _renderWorld
+                                = renW  { _guiState = SelectCardToPlay hand info $
+                                                if isValidPlay hand info card
+                                                then Just card
+                                                else Nothing
+                                        }
+                                -- , _dbgInfo = "Dropping in play area":(_dbgInfo world)
+                                }
+                        else world{ _renderWorld = renW{_dbgInfo = "Not valid play ":(_dbgInfo renW)}}
+                    (Just _, SelectCardToPlay _ _ (Just _))  ->
+                            world{ _renderWorld = renW{_dbgInfo = "Already selected card to play":(_dbgInfo renW)}}
+                )
             )
         $ registerGeneric 0
         -- The game window
