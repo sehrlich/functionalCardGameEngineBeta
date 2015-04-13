@@ -25,6 +25,9 @@ import Control.Concurrent.STM
 import qualified Control.Concurrent.Async as Async
 -- import Control.Distributed.Process
 
+-- import Control.Concurrent.Supply
+-- there's a reasonable chance we need this here and need to supply it to each child
+
 main :: IO ()
 main = do
         p0 <- constructGUIPlayer 0
