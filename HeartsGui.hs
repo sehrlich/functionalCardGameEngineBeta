@@ -16,6 +16,11 @@ import Control.Concurrent.STM
 -- may want to consider
 -- idSupply Data.Unique.ID or monadSupply or
 -- Control.Eff.Fresh or some such
+-- decided on Control.Concurrent.Supply for two reasons: first I forgot where this
+-- comment was so just found searched for what I wanted again, second this library
+-- was written by ekmett and is in LTS stackage
+import Control.Concurrent.Supply
+
 import Data.Maybe (fromJust)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
@@ -30,6 +35,7 @@ data RenderWorld = RenderGame
                 , _dbgInfo      :: DebugInfo
                 , _markIIworld  :: MarkIIRender
                 , _position     :: Int
+                , _idSupply     :: Supply
                 -- _animation  --- collect drag and server generated animations
                 -- consider moving inbox and outbox here
                 -- may also need a place to register current effect seeking target
@@ -85,11 +91,13 @@ data GuiState   = DisplayOnly
 
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> Int -> IO ()
 guiThread inbox outbox pos
-    = do playIO
+    = do 
+        idSupply <- newSupply
+        playIO
             window
             white			 -- background color
             100              -- steps per second
-            (RenderGame RenderEmpty DisplayOnly [] baseWorld pos)     -- world
+            (RenderGame RenderEmpty DisplayOnly [] baseWorld pos idSupply)     -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             timeHandle       -- time update
@@ -105,7 +113,7 @@ guiThread inbox outbox pos
 
 
 eventHandle :: Event -> RenderWorld -> IO RenderWorld
-eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p)
+eventHandle event curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p _idSup)
     = case event of
     EventResize _ws -> return $ curGame
     EventMotion (mx,my)
@@ -254,7 +262,7 @@ registerButton loc img action world
     where bid = 37-- generate button id
 
 drawWorld :: RenderWorld -> IO Picture
-drawWorld (RenderGame _mri _gs debugInfo mIIrender _pos)
+drawWorld (RenderGame _mri _gs debugInfo mIIrender _pos _idSup)
     = do
     -- render debugInfo
     let dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
