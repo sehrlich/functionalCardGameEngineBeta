@@ -66,9 +66,11 @@ data Location      = Location Zone Bbox -- will want vector stuff to handle/chan
 data Clickable     = Clickable
                     { depth        :: Depth
                     , clickProcess :: ClickProcess
+                    -- id of thing
                     }
 data Target        = Target
                     { releaseProcess :: ClickProcess
+                    -- id of thing
                     }
 -- type RenderProcess = IO Picture
 type ClickProcess  = Pos -> GuiWorld -> IO GuiWorld
@@ -206,25 +208,31 @@ handleInMessage_ :: GuiWorld -> ServerToClient -> GuiWorld
 handleInMessage_ world m
     =
     case m of
-        StcRender rinfo -> world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}, _markIIworld = (register rinfo $ _markIIworld world)}
+        StcRender rinfo -> register rinfo world
         StcGetPassSelection _ _ -> world{ _renderWorld = (_renderWorld world){_guiState = SelectCardsToPass Z.empty} }
         StcGetMove hand info -> world{ _renderWorld = (_renderWorld world){_guiState = SelectCardToPlay hand info Nothing} }
         _ -> world
 
-register :: RenderInfo -> MarkIIRender -> MarkIIRender
-register (Passing hand _passdir) mIIworld =
-    S.foldrWithIndex rgstr mIIworld (orderPile hand)
+{- Register nonsense takes guiworld to guiworld
+ -}
+register :: RenderInfo -> GuiWorld -> GuiWorld
+register rinfo@(Passing hand _passdir) world =
+    world
+        { _renderWorld = (_renderWorld world){_receivedInfo = rinfo}
+        , _markIIworld = S.foldrWithIndex rgstr (_markIIworld world) (orderPile hand)
+        }
     where rgstr i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
 -- will need to register hand after cards have passed
-register (RenderInRound hand trick _scores) _mIIworld =
-    flip (S.foldrWithIndex rgstr') trick $
-    S.foldrWithIndex rgstr baseWorld (orderPile hand)
+register rinfo@(RenderInRound hand trick _scores) w =
+    w   {  _renderWorld = (_renderWorld w){_receivedInfo = rinfo}
+        , _markIIworld = flip (S.foldrWithIndex rgstr') trick $ S.foldrWithIndex rgstr baseWorld (orderPile hand)
+        }
     where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
           rgstr' i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), 200  ) -- Switch to PlayArea
 register (RenderServerState _ _) w = w
-register (BetweenRounds _) _w = emptyWorld
+register (BetweenRounds _) w = w{ _markIIworld = emptyWorld}
 register (Canonical _ _ _) w = w
-register (RenderEmpty) _w = emptyWorld
+register (RenderEmpty) w = w{ _markIIworld = emptyWorld}
 
 registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> MarkIIRender -> MarkIIRender
 registerGeneric idNo mLoc mSpr mZon mTar world
