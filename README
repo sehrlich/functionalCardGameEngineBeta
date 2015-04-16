@@ -51,7 +51,15 @@ stuff for tutorials/scenarios
     messages
 menus
 zones
+    these are really data structures
 default ways of doing selection in a zone -- i.e. select and unselect until click done
+recognizing an object with an id we've seen before
 
 
-revamp world with markIIrender etc.
+disentangle heartsGui from generic Gui stuff ala PlayingCards
+    genericGui should have
+        zones
+        buttons
+        setting up the gloss thread, inbox, outbox
+        registering stuff
+        generic rendering stuff

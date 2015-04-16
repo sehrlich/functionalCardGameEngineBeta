@@ -45,10 +45,6 @@ data RenderWorld = RenderGame
                 -- may also need a place to register current effect seeking target
                 }
 
--- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
-type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
-type Bbox          = (Float, Float)
-type Pos           = (Float, Float)
 {- Zones are data structures to handle and organize objects on the screen
  - they should support the following operations
  - query if objectid is handled by zone
@@ -56,11 +52,16 @@ type Pos           = (Float, Float)
  - accept objectid to be handled
  - delete objectid (i.e. stop representing them)
  -}
-data Zone          = HandArea | PlayArea | ExactPos Pos
+data Zone          = HandArea Pos | PlayArea Pos | ExactPos Pos
 -- with the above in mind, handarea playarea and exactpos (maybe should be window) should be variables maybe?
 -- zones may map ids to positions
 -- may want to let zone hold zones
 -- and right now zone + location are tangled
+
+-- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
+type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
+type Bbox          = (Float, Float)
+type Pos           = (Float, Float)
 data Sprite        = Sprite Picture -- RenderProcess if we need io to render?
 data Location      = Location Zone Bbox -- will want vector stuff to handle/change locations
 data Clickable     = Clickable
@@ -103,7 +104,7 @@ guiThread inbox outbox pos
             window
             white			 -- background color
             100              -- steps per second
-            (GuiWorld (RenderGame RenderEmpty DisplayOnly [] pos) baseWorld idSupply)  -- world
+            (initWorld $ emptyWorld pos idSupply) -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             timeHandle       -- time update
@@ -119,7 +120,7 @@ guiThread inbox outbox pos
 
 
 eventHandle :: Event -> GuiWorld -> IO GuiWorld
-eventHandle event world -- curGame@(RenderGame _rinfo _gs _dbgInfo _mIIworld _p _idSup)
+eventHandle event world
     = let mIIw = _markIIworld world
     in case event of
     EventResize _ws -> return $ world
@@ -222,31 +223,37 @@ register rinfo@(Passing hand _passdir) world =
 -- will need to register hand after cards have passed
 register rinfo@(RenderInRound hand trick _scores) w =
     flip (S.foldrWithIndex rgstr') trick $ S.foldrWithIndex rgstr world (orderPile hand)
-    {-w   {  _renderWorld = (_renderWorld w){_receivedInfo = rinfo}-}
-        {-, _markIIworld = flip (S.foldrWithIndex rgstr') trick $ S.foldrWithIndex rgstr baseWorld (orderPile hand)-}
-        {-}-}
     where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
           rgstr' i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), 200  ) -- Switch to PlayArea
-          world = w{ _renderWorld = (_renderWorld w){_receivedInfo = rinfo}}
+          world = w { _renderWorld = (_renderWorld w){_receivedInfo = rinfo}
+                    -- , _markIIworld = baseWorld
+                    }
 register (RenderServerState _ _) w = w
-register (BetweenRounds _) w = w{ _markIIworld = emptyWorld}
+register (BetweenRounds _) w = w{ _markIIworld = emptyRender}
 register (Canonical _ _ _) w = w
-register (RenderEmpty) w = w{ _markIIworld = emptyWorld}
+register (RenderEmpty) w = w{ _markIIworld = emptyRender}
 
-registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> MarkIIRender -> MarkIIRender
-registerGeneric idNo mLoc mSpr mZon mTar world
-    = world
-        { clickables = IntMap.alter (const mZon) idNo (clickables world)
-        , targets    = IntMap.alter (const mTar) idNo (targets    world)
-        , sprites    = IntMap.alter (const mSpr) idNo (sprites    world)
-        , locations  = IntMap.alter (const mLoc) idNo (locations  world)
+registerGeneric :: Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
+registerGeneric mLoc mSpr mZon mTar world
+    = 
+    let mIIw = _markIIworld world
+        (idNo, newSup) = freshId $ _idSupply world
+    in     
+    world
+    { _markIIworld = mIIw
+        { clickables = IntMap.alter (const mZon) idNo (clickables mIIw)
+        , targets    = IntMap.alter (const mTar) idNo (targets    mIIw)
+        , sprites    = IntMap.alter (const mSpr) idNo (sprites    mIIw)
+        , locations  = IntMap.alter (const mLoc) idNo (locations  mIIw)
         }
+    , _idSupply = newSup
+    }
 
 registerCard :: Zone -> Card -> GuiWorld -> GuiWorld
 registerCard pos card world
     = 
     let mIIw = _markIIworld world
-        (cid, newSupply) = freshId $ _idSupply world
+        (cid, newSup) = freshId $ _idSupply world
         c = Clickable cid $ clickCard cid card
         t = Target   $ dropCard card
         s = Sprite   $ renderCard card
@@ -260,7 +267,7 @@ registerCard pos card world
             , locations   = IntMap.insert cid l    (locations   mIIw)
             , gameObjects = IntMap.insert cid card (gameObjects mIIw)
             }
-        , _idSupply = newSupply
+        , _idSupply = newSup
         }
     where clickCard cid _crd (mx, my) w =
             return $ w{ _markIIworld =
@@ -272,15 +279,15 @@ registerCard pos card world
             {-return $ w{ _dbgInfo = (("releasing around area of " ++show crd):(_dbgInfo w))
                       }-}
 
-registerButton :: Location -> Sprite -> ClickProcess -> MarkIIRender -> MarkIIRender
--- registerButton = undefined -- needs to actually register button
-registerButton loc img action world
-    = world
-        { targets   = IntMap.insert bid (Target action) (targets   world)
-        , sprites   = IntMap.insert bid img             (sprites   world)
-        , locations = IntMap.insert bid loc             (locations world)
-        }
-    where bid = 37-- generate button id
+{-registerButton :: Location -> Sprite -> ClickProcess -> GuiWorld -> GuiWorld-}
+{--- registerButton = undefined -- needs to actually register button-}
+{-registerButton loc img action world-}
+    {-= world-}
+        {-{ targets   = IntMap.insert bid (Target action) (targets   world)-}
+        {-, sprites   = IntMap.insert bid img             (sprites   world)-}
+        {-, locations = IntMap.insert bid loc             (locations world)-}
+        {-}-}
+    {-where bid = 37-- generate button id-}
 
 drawWorld :: GuiWorld -> IO Picture
 drawWorld world
@@ -292,15 +299,15 @@ drawWorld world
     -- will also want to render in depth order
     return $ Pictures [ dbg
                       {-, render mri-}
-                      , renderII mIIrender
+                      , render mIIrender
                       ]
 
 -- If I moved dragged into an animtions record then I'll either
 -- need to make this take the whole world, or, more plausibly,
 -- have a renderAnim separate from renderStatic or something
 -- also consider where textual things are
-renderII :: MarkIIRender -> Picture
-renderII mIIw
+render :: MarkIIRender -> Picture
+render mIIw
     = Pictures [renderable, dragging]
     -- the proper alternative here is to iterate over zones rendering everything inside them
     where renderable =
@@ -317,10 +324,14 @@ renderII mIIw
 renderSprite :: (Sprite, Location) -> Picture
 renderSprite ((Sprite pic), (Location (ExactPos (px,py)) _bbox))
     = Translate px py $ pic
+renderSprite ((Sprite pic), (Location (PlayArea (px,py)) _bbox))
+    = Translate px py $ pic
+renderSprite ((Sprite pic), (Location (HandArea (px,py)) _bbox))
+    = Translate px py $ pic
 -- not correct way to render something in a zone
 
-renderZone :: Zone -> Picture
-renderZone = undefined
+{-renderZone :: Zone -> Picture-}
+{-renderZone = undefined-}
 
 renderCard :: Card -> Picture
 renderCard card
@@ -331,22 +342,12 @@ renderCard card
         , Color black $ rectangleWire (60) (80)
         ]
 
-convertCardID :: Card -> Int
-convertCardID (Card s r) =
-    let s' = case s of
-                Clubs    -> 1
-                Diamonds -> 2
-                Hearts   -> 3
-                Spades   -> 4
-    in
-    50*s'+r
+emptyRender :: MarkIIRender
+emptyRender = MarkIIRender IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
 
-emptyWorld :: MarkIIRender
-emptyWorld = MarkIIRender IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
-
-baseWorld :: MarkIIRender
-baseWorld =
-    registerGeneric 1
+initWorld :: GuiWorld -> GuiWorld
+initWorld =
+    registerGeneric
     -- The PlayArea
         (Just $ Location (ExactPos (0,0)) (400,300))
         (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
@@ -373,7 +374,7 @@ baseWorld =
                                             }
                                     , _markIIworld
                                     = mIIw  { dragged = Nothing
-                                            , locations = IntMap.insert i (Location (ExactPos (mx,my)) (80,60)) (locations mIIw)
+                                            , locations = IntMap.insert i (Location (PlayArea (mx,my)) (80,60)) (locations mIIw)
                                             }
                                     }
                         else world  { _renderWorld = renW{_dbgInfo = "cannot add card to passing set":(_dbgInfo renW)}}
@@ -386,6 +387,7 @@ baseWorld =
                                 { _markIIworld
                                 = mIIw  { dragged = Nothing
                                         , locations = IntMap.insert i (Location (ExactPos (mx,my)) (80,60)) (locations mIIw)
+                                        -- may need to be altering old zone
                                         }
                                 , _renderWorld
                                 = renW  { _guiState = SelectCardToPlay hand info $
@@ -400,7 +402,7 @@ baseWorld =
                             world{ _renderWorld = renW{_dbgInfo = "Already selected card to play":(_dbgInfo renW)}}
                 )
             )
-        $ registerGeneric 0
+        . registerGeneric
         -- The game window
             (Just $ Location (ExactPos (0,0)) (800,600))
             (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
@@ -422,5 +424,7 @@ baseWorld =
                                     }
                     )
             )
-    $ emptyWorld
+    
 
+emptyWorld :: Int -> Supply -> GuiWorld
+emptyWorld pos sup = (GuiWorld (RenderGame RenderEmpty DisplayOnly [] pos) emptyRender sup)  -- world
