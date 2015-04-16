@@ -217,18 +217,17 @@ handleInMessage_ world m
  -}
 register :: RenderInfo -> GuiWorld -> GuiWorld
 register rinfo@(Passing hand _passdir) world =
-    world
-        { _renderWorld = (_renderWorld world){_receivedInfo = rinfo}
-        , _markIIworld = S.foldrWithIndex rgstr (_markIIworld world) (orderPile hand)
-        }
+    S.foldrWithIndex rgstr (world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}}) (orderPile hand)
     where rgstr i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
 -- will need to register hand after cards have passed
 register rinfo@(RenderInRound hand trick _scores) w =
-    w   {  _renderWorld = (_renderWorld w){_receivedInfo = rinfo}
-        , _markIIworld = flip (S.foldrWithIndex rgstr') trick $ S.foldrWithIndex rgstr baseWorld (orderPile hand)
-        }
+    flip (S.foldrWithIndex rgstr') trick $ S.foldrWithIndex rgstr world (orderPile hand)
+    {-w   {  _renderWorld = (_renderWorld w){_receivedInfo = rinfo}-}
+        {-, _markIIworld = flip (S.foldrWithIndex rgstr') trick $ S.foldrWithIndex rgstr baseWorld (orderPile hand)-}
+        {-}-}
     where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
           rgstr' i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), 200  ) -- Switch to PlayArea
+          world = w{ _renderWorld = (_renderWorld w){_receivedInfo = rinfo}}
 register (RenderServerState _ _) w = w
 register (BetweenRounds _) w = w{ _markIIworld = emptyWorld}
 register (Canonical _ _ _) w = w
@@ -243,18 +242,27 @@ registerGeneric idNo mLoc mSpr mZon mTar world
         , locations  = IntMap.alter (const mLoc) idNo (locations  world)
         }
 
-registerCard :: Zone -> Card -> MarkIIRender -> MarkIIRender
+registerCard :: Zone -> Card -> GuiWorld -> GuiWorld
 registerCard pos card world
-    = world
-        { clickables  = IntMap.insert cid c    (clickables  world)
-        , targets     = IntMap.insert cid t    (targets     world)
-        , sprites     = IntMap.insert cid s    (sprites     world)
-        , locations   = IntMap.insert cid l    (locations   world)
-        , gameObjects = IntMap.insert cid card (gameObjects world)
+    = 
+    let mIIw = _markIIworld world
+        (cid, newSupply) = freshId $ _idSupply world
+        c = Clickable cid $ clickCard cid card
+        t = Target   $ dropCard card
+        s = Sprite   $ renderCard card
+        l = Location pos (80,60)
+    in
+    world
+        { _markIIworld = mIIw
+            { clickables  = IntMap.insert cid c    (clickables  mIIw)
+            , targets     = IntMap.insert cid t    (targets     mIIw)
+            , sprites     = IntMap.insert cid s    (sprites     mIIw)
+            , locations   = IntMap.insert cid l    (locations   mIIw)
+            , gameObjects = IntMap.insert cid card (gameObjects mIIw)
+            }
+        , _idSupply = newSupply
         }
-    where cid = convertCardID card
-          -- cid will be changed to come from Supply
-          clickCard _crd (mx, my) w =
+    where clickCard cid _crd (mx, my) w =
             return $ w{ _markIIworld =
                         (_markIIworld w){ dragged = Just (cid, mx, my) }
                       -- , _dbgInfo = ((show crd):(_dbgInfo w))
@@ -263,10 +271,6 @@ registerCard pos card world
             return w
             {-return $ w{ _dbgInfo = (("releasing around area of " ++show crd):(_dbgInfo w))
                       }-}
-          c = Clickable cid $ clickCard card
-          t = Target   $ dropCard card
-          s = Sprite   $ renderCard card
-          l = Location pos (80,60)
 
 registerButton :: Location -> Sprite -> ClickProcess -> MarkIIRender -> MarkIIRender
 -- registerButton = undefined -- needs to actually register button
@@ -279,7 +283,7 @@ registerButton loc img action world
     where bid = 37-- generate button id
 
 drawWorld :: GuiWorld -> IO Picture
-drawWorld world--(RenderGame _mri _gs debugInfo mIIrender _pos _idSup)
+drawWorld world
     = do
     -- render debugInfo
     let debugInfo = _dbgInfo $ _renderWorld world
