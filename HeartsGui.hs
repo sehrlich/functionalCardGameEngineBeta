@@ -30,7 +30,7 @@ import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 
 data GuiWorld = GuiWorld
-                { _renderWorld :: RenderWorld
+                { _renderWorld  :: RenderWorld
                 , _markIIworld  :: MarkIIRender
                 , _idSupply     :: Supply
                 }

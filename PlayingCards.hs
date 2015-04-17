@@ -91,17 +91,17 @@ _cardback :: String
 _cardback = colorize [104] "()"
 
 
-{--| Returns all cards that are playable in this trick --}
-playableCards :: Hand -> Trick -> Hand
-playableCards hand trick =
-    if Seq.null trick
-    then hand
-    else
-       let matchesLead c   = _suit c == _suit (Seq.index trick 0)
-       in
-       if F.any matchesLead hand
-       then Set.filter matchesLead hand
-       else hand
+{-[>-| Returns all cards that are playable in this trick -<]-}
+{-playableCards :: Hand -> Trick -> Hand-}
+{-playableCards hand trick =-}
+    {-if Seq.null trick-}
+    {-then hand-}
+    {-else-}
+       {-let matchesLead c   = _suit c == _suit (Seq.index trick 0)-}
+       {-in-}
+       {-if F.any matchesLead hand-}
+       {-then Set.filter matchesLead hand-}
+       {-else hand-}
 
 {--| Checks that the card played follows suit if able --}
 followsSuit :: Hand -> Trick -> Card -> Bool
@@ -169,15 +169,15 @@ shuffle xs = do
 -- dodging
 -- takes a hand, a trick (and maybe trump) and
 -- selects the highest card it can play that won't win 
-dodging :: Hand -> Trick -> Maybe Suit -> Card
-dodging h t ms =
-    if Seq.null t
-    then Set.findMin h
-    else
-       let playables = playableCards h t
-           curwinner = trickWinner t ms
-           dodges = undefined
-       in
-       if F.any dodges playables
-       then Set.findMax $ Set.filter dodges playables
-       else Set.findMin playables
+{-dodging :: Hand -> Trick -> Maybe Suit -> Card-}
+{-dodging h t ms =-}
+    {-if Seq.null t-}
+    {-then Set.findMin h-}
+    {-else-}
+       {-let playables = playableCards h t-}
+           {-curwinner = trickWinner t ms-}
+           {-dodges = undefined-}
+       {-in-}
+       {-if F.any dodges playables-}
+       {-then Set.findMax $ Set.filter dodges playables-}
+       {-else Set.findMin playables-}
