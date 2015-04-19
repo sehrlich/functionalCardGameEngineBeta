@@ -53,6 +53,10 @@ data RenderWorld = RenderGame
  - delete objectid (i.e. stop representing them)
  -}
 data Zone          = HandArea Pos | PlayArea Pos | ExactPos Pos
+extractPos :: Zone -> Int -> Pos
+extractPos = undefined
+manageObject :: Zone -> Int -> Zone
+manageObject = undefined
 -- with the above in mind, handarea playarea and exactpos (maybe should be window) should be variables maybe?
 -- zones may map ids to positions
 -- may want to let zone hold zones
