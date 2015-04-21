@@ -54,11 +54,11 @@ data RenderWorld = RenderGame
  -}
 data Zone          = HandArea Pos | PlayArea Pos | ExactPos Pos
 extractPos :: Zone -> Int -> Pos
-extractPos = undefined
+extractPos zone oid = undefined
 manageObject :: GuiWorld -> Zone -> Int -> Zone
-manageObject = undefined
+manageObject world zone oid = undefined
 deleteObject :: Zone -> Int -> Zone
-deleteObject = undefined
+deleteObject zone oid = undefined
 -- with the above in mind, handarea playarea and exactpos (maybe should be window) should be variables maybe?
 -- zones may map ids to positions
 -- may want to let zone hold zones
