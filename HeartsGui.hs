@@ -34,6 +34,7 @@ data GuiWorld = GuiWorld
                 , _markIIworld  :: MarkIIRender
                 , _idSupply     :: Supply
                 }
+                -- somewhere needs access to mouse position
 
 data RenderWorld = RenderGame
                 { _receivedInfo :: RenderInfo
@@ -53,6 +54,8 @@ data RenderWorld = RenderGame
  - delete objectid (i.e. stop representing them)
  -}
 data Zone          = HandArea Pos | PlayArea Pos | ExactPos Pos
+                    ---  Zone ManagementStyle Intmap Pos
+                    --- type ManagementStyle = GuiWorld -> Pos
 extractPos :: Zone -> Int -> Pos
 extractPos zone oid = undefined
 manageObject :: GuiWorld -> Zone -> Int -> Zone
