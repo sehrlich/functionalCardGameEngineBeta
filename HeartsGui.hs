@@ -53,6 +53,8 @@ data RenderWorld = RenderGame
  - return location/position of valid objectids for rendering
  - accept objectid to be handled
  - delete objectid (i.e. stop representing them)
+ -
+ - Alternatively zones might want to be a typeclass
  -}
 data Zone          = HandArea Pos | PlayArea Pos | ExactPos Pos
                     ---  Zone ManagementStyle Intmap Pos
