@@ -41,6 +41,7 @@ data RenderWorld = RenderGame
                 , _guiState     :: GuiState
                 , _dbgInfo      :: DebugInfo
                 , _position     :: Int          -- Player position
+                -- , _mouseCoords :: Pos
                 -- _animation  --- collect drag and server generated animations
                 -- consider moving inbox and outbox here
                 -- may also need a place to register current effect seeking target
