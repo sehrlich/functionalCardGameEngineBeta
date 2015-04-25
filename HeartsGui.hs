@@ -56,7 +56,8 @@ data RenderWorld = RenderGame
  -
  - Alternatively zones might want to be a typeclass
  -}
-data Zone          = HandArea Pos | PlayArea Pos | ExactPos Pos
+data Zone          = PlayArea Pos | ExactPos Pos
+                    -- HandArea Pos | 
                     ---  Zone ManagementStyle Intmap Pos
                     --- type ManagementStyle = GuiWorld -> Pos
 extractPos :: Zone -> Int -> Pos
@@ -338,8 +339,8 @@ renderSprite ((Sprite pic), (Location (ExactPos (px,py)) _bbox))
     = Translate px py $ pic
 renderSprite ((Sprite pic), (Location (PlayArea (px,py)) _bbox))
     = Translate px py $ pic
-renderSprite ((Sprite pic), (Location (HandArea (px,py)) _bbox))
-    = Translate px py $ pic
+{-renderSprite ((Sprite pic), (Location (HandArea (px,py)) _bbox))
+    = Translate px py $ pic-}
 -- not correct way to render something in a zone
 
 {-renderZone :: Zone -> Picture-}
