@@ -41,7 +41,7 @@ data RenderWorld = RenderGame
                 , _guiState     :: GuiState
                 , _dbgInfo      :: DebugInfo
                 , _position     :: Int          -- Player position
-                -- , _mouseCoords :: Pos
+                , _mouseCoords  :: Pos
                 -- _animation  --- collect drag and server generated animations
                 -- consider moving inbox and outbox here
                 -- may also need a place to register current effect seeking target
@@ -135,12 +135,15 @@ guiThread inbox outbox pos
 eventHandle :: Event -> GuiWorld -> IO GuiWorld
 eventHandle event world
     = let mIIw = _markIIworld world
+          renW = _renderWorld world
     in case event of
     EventResize _ws -> return $ world
     EventMotion (mx,my)
-        -> case dragged (_markIIworld world) of
-            Nothing      -> return world
-            Just (i,_,_) -> return $ world
+        -> let world' = world { _renderWorld = renW{_mouseCoords = (mx, my)} }
+            in
+            case dragged (_markIIworld world) of
+            Nothing      -> return world'
+            Just (i,_,_) -> return $ world'
                                     { _markIIworld = mIIw{dragged = Just (i,mx,my)}
                                     -- , _dbgInfo = (show (mx,my) ):_dbgInfo
                                     }
@@ -440,4 +443,4 @@ initWorld =
     
 
 emptyWorld :: Int -> Supply -> GuiWorld
-emptyWorld pos sup = (GuiWorld (RenderGame RenderEmpty DisplayOnly [] pos) emptyRender sup)  -- world
+emptyWorld pos sup = (GuiWorld (RenderGame RenderEmpty DisplayOnly [] pos (0,0)) emptyRender sup)  -- world
