@@ -97,7 +97,7 @@ data MarkIIRender = MarkIIRender
     , locations   :: IntMap Location -- should go through zones
     , gameObjects :: IntMap Card
     -- consider using viewports rather than locations
-    , dragged    :: Maybe (Int, Float, Float) -- ID of card currently being draged
+    , dragged    :: Maybe Int -- ID of card currently being draged
     -- movement paths handed to us
     -- need Zones
     }
@@ -142,9 +142,9 @@ eventHandle event world
         -> let world' = world { _renderWorld = renW{_mouseCoords = (mx, my)} }
             in
             case dragged (_markIIworld world) of
-            Nothing      -> return world'
-            Just (i,_,_) -> return $ world'
-                                    { _markIIworld = mIIw{dragged = Just (i,mx,my)}
+            Nothing -> return world'
+            Just i  -> return $ world'
+                                    { _markIIworld = mIIw{dragged = Just i}
                                     -- , _dbgInfo = (show (mx,my) ):_dbgInfo
                                     }
     EventKey k ks _mod mpos
@@ -287,7 +287,7 @@ registerCard pos card world
         }
     where clickCard cid _crd (mx, my) w =
             return $ w{ _markIIworld =
-                        (_markIIworld w){ dragged = Just (cid, mx, my) }
+                        (_markIIworld w){ dragged = Just cid }
                       -- , _dbgInfo = ((show crd):(_dbgInfo w))
                       }
           dropCard _crd _mpos w =
@@ -332,8 +332,9 @@ render mIIw
             $ IntMap.intersectionWith (,) (sprites mIIw) (locations mIIw)
           dragging =
             case dragged mIIw of
-                Just (i,px,py) -> renderSprite ((IntMap.!) (sprites mIIw) i, (Location (ExactPos (px,py)) (80,60)))
+                Just i -> renderSprite ((IntMap.!) (sprites mIIw) i, (Location ((fixme)) (80,60)))
                 Nothing -> Blank
+                where fixme = ExactPos (0,0) -- should be drawn from GuiWorld
 
 -- Will need a way to turn a location into coordinates
 -- will be made obsolete when zones come online
@@ -379,8 +380,9 @@ initWorld =
                 case (dragged mIIw, _guiState renW) of
                     (Nothing, _)       -> world -- {_dbgInfo = "Released in play area":(_dbgInfo world)}
                     (_, DisplayOnly)   -> world -- {_dbgInfo = "Released in play area":(_dbgInfo world)}
-                    (Just (i,mx,my), SelectCardsToPass soFar) ->
+                    (Just i, SelectCardsToPass soFar) ->
                         let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
+                            (mx,my) = _mouseCoords renW 
                         in
                         if Z.size soFar < 3 && Z.notMember card soFar
                             -- Card not in set and size of set less than 3
@@ -394,9 +396,10 @@ initWorld =
                                             }
                                     }
                         else world  { _renderWorld = renW{_dbgInfo = "cannot add card to passing set":(_dbgInfo renW)}}
-                    (Just (i,mx,my), SelectCardToPlay hand info Nothing)  ->
+                    (Just i, SelectCardToPlay hand info Nothing)  ->
                         -- let card = (IntMap.! (gameObjects mIIw) i)
                         let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
+                            (mx,my) = _mouseCoords renW 
                         in
                         if isValidPlay hand info card
                         then world
