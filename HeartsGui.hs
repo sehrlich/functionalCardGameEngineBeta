@@ -308,33 +308,35 @@ registerCard pos card world
 drawWorld :: GuiWorld -> IO Picture
 drawWorld world
     = do
-    -- render debugInfo
+    -- render debugInfo can now move this into render
     let debugInfo = _dbgInfo $ _renderWorld world
-        mIIrender = _markIIworld world
         dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
     -- will also want to render in depth order
     return $ Pictures [ dbg
                       {-, render mri-}
-                      , render mIIrender
+                      , render world
                       ]
 
 -- If I moved dragged into an animtions record then I'll either
 -- need to make this take the whole world, or, more plausibly,
 -- have a renderAnim separate from renderStatic or something
 -- also consider where textual things are
-render :: MarkIIRender -> Picture
-render mIIw
+render :: GuiWorld -> Picture
+render gw
     = Pictures [renderable, dragging]
     -- the proper alternative here is to iterate over zones rendering everything inside them
-    where renderable =
+    where 
+       renderable =
             Pictures $ map renderSprite
             $ IntMap.elems
             $ IntMap.intersectionWith (,) (sprites mIIw) (locations mIIw)
-          dragging =
+       mIIw = _markIIworld gw
+       mouseCoords = _mouseCoords ( _renderWorld gw )
+       dragging =
             case dragged mIIw of
                 Just i -> renderSprite ((IntMap.!) (sprites mIIw) i, (Location ((fixme)) (80,60)))
                 Nothing -> Blank
-                where fixme = ExactPos (0,0) -- should be drawn from GuiWorld
+                where fixme = ExactPos mouseCoords -- should be drawn from GuiWorld
 
 -- Will need a way to turn a location into coordinates
 -- will be made obsolete when zones come online
