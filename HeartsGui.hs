@@ -87,7 +87,7 @@ data Target        = Target
                     -- id of thing
                     }
 -- type RenderProcess = IO Picture
-type ClickProcess  = Pos -> GuiWorld -> IO GuiWorld
+type ClickProcess  = GuiWorld -> IO GuiWorld
 
 data MarkIIRender = MarkIIRender
     -- component entity like system
@@ -152,13 +152,13 @@ eventHandle event world
             (MouseButton _, Down)
                 ->
                 -- register the click with an object (clickable)
-                let (_d, action) = IntMap.foldr cmpDepth (-1, const return)
+                let (_d, action) = IntMap.foldr cmpDepth (-1, return)
                                     $ IntMap.intersection (clickables mIIw)
                                     $ IntMap.filter (isInRegion mpos)
                                     $ locations mIIw
                     cmpDepth z (d, a) = let d' = depth z in if d' > d then (d', clickProcess z) else (d, a)
-                -- select the zone with highest depth, and run its on click
-                in action mpos world
+                -- select the object with highest depth, and run its on click
+                in action world
             (MouseButton _, Up)
                 -> do
                 -- will clean this up eventually
@@ -167,7 +167,7 @@ eventHandle event world
                 -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
                 -- if only in generic background target, have sensible move back animation
                 -- give this the proper name rather than blah
-                blah (map ((=<<) . ($ mpos)) shouldGoOff) $ return world
+                blah (map ((=<<) ) shouldGoOff) $ return world
                 where blah l a = case l of
                                     (x:xs) -> blah xs (x a)
                                     [] -> a
@@ -285,12 +285,12 @@ registerCard pos card world
             }
         , _idSupply = newSup
         }
-    where clickCard cid _crd (mx, my) w =
+    where clickCard cid _crd w =
             return $ w{ _markIIworld =
                         (_markIIworld w){ dragged = Just cid }
                       -- , _dbgInfo = ((show crd):(_dbgInfo w))
                       }
-          dropCard _crd _mpos w =
+          dropCard _crd w =
             return w
             {-return $ w{ _dbgInfo = (("releasing around area of " ++show crd):(_dbgInfo w))
                       }-}
@@ -331,12 +331,11 @@ render gw
             $ IntMap.elems
             $ IntMap.intersectionWith (,) (sprites mIIw) (locations mIIw)
        mIIw = _markIIworld gw
-       mouseCoords = _mouseCoords ( _renderWorld gw )
+       mouseCoords = ExactPos $ _mouseCoords ( _renderWorld gw )
        dragging =
             case dragged mIIw of
-                Just i -> renderSprite ((IntMap.!) (sprites mIIw) i, (Location ((fixme)) (80,60)))
+                Just i -> renderSprite ((IntMap.!) (sprites mIIw) i, (Location (mouseCoords) (80,60)))
                 Nothing -> Blank
-                where fixme = ExactPos mouseCoords -- should be drawn from GuiWorld
 
 -- Will need a way to turn a location into coordinates
 -- will be made obsolete when zones come online
@@ -370,9 +369,9 @@ initWorld =
     -- The PlayArea
         (Just $ Location (ExactPos (0,0)) (400,300))
         (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
-        (Just $ Clickable 0 (\_mpos world -> return $ world {-{_dbgInfo = ["Clicked in play area"]}-} ) )
+        (Just $ Clickable 0 (\world -> return $ world {-{_dbgInfo = ["Clicked in play area"]}-} ) )
         (Just $
-            Target (\_mpos world ->
+            Target (\world ->
 --                  -- we also need this to take into consideration the gui mode
 --                  -- very likely that this is easier to pull out into another function
                 let mIIw = _markIIworld world
@@ -427,9 +426,9 @@ initWorld =
         -- The game window
             (Just $ Location (ExactPos (0,0)) (800,600))
             (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
-            (Just $ Clickable 0 (\_mpos world -> return $ world {-{_dbgInfo = ["Clicked in window"]}-}) )
+            (Just $ Clickable 0 (\world -> return $ world {-{_dbgInfo = ["Clicked in window"]}-}) )
             (Just $
-                Target (\_mpos world ->
+                Target (\world ->
                         return $ case dragged (_markIIworld world) of
                             Nothing       -> world -- {_dbgInfo = "Released in window":(_dbgInfo world)}
                             -- Just (i,mx,my)  ->
