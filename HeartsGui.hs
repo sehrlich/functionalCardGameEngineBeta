@@ -59,7 +59,10 @@ data RenderWorld = RenderGame
 data Zone          = PlayArea Pos | ExactPos Pos
                     -- HandArea Pos | 
                     ---  Zone ManagementStyle Intmap Pos
-                    --- type ManagementStyle = GuiWorld -> Pos
+type ManagementStyle = GuiWorld -> Pos
+insertAtMousePos :: ManagementStyle
+insertAtMousePos gw = _mouseCoords $ _renderWorld gw
+
 extractPos :: Zone -> Int -> Pos
 extractPos zone oid = undefined
 manageObject :: GuiWorld -> Zone -> Int -> Zone
