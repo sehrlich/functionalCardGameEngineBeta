@@ -62,6 +62,8 @@ data Zone          = PlayArea Pos | ExactPos Pos
 type ManagementStyle = GuiWorld -> Pos
 insertAtMousePos :: ManagementStyle
 insertAtMousePos gw = _mouseCoords $ _renderWorld gw
+insertNextPos :: ManagementStyle
+insertNextPos = undefined
 
 extractPos :: Zone -> Int -> Pos
 extractPos zone oid = undefined
