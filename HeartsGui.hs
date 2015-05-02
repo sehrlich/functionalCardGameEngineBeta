@@ -330,6 +330,7 @@ render :: GuiWorld -> Picture
 render gw
     = Pictures [renderable, dragging]
     -- the proper alternative here is to iterate over zones rendering everything inside them
+    -- can render debug info here as well
     where 
        renderable =
             Pictures $ map renderSprite
