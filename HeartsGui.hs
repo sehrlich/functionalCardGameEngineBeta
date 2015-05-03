@@ -346,6 +346,12 @@ render gw
 -- Will need a way to turn a location into coordinates
 -- will be made obsolete when zones come online
 renderSprite :: (Sprite, Location) -> Picture
+renderSprite ((Sprite pic), (Location zone _bbox))
+    = let
+        correctIdForSprite = undefined
+        (px,py) = extractPos zone correctIdForSprite
+    in
+    Translate px py $ pic
 renderSprite ((Sprite pic), (Location (ExactPos (px,py)) _bbox))
     = Translate px py $ pic
 renderSprite ((Sprite pic), (Location (PlayArea (px,py)) _bbox))
