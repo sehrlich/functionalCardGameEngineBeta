@@ -360,6 +360,12 @@ renderSprite ((Sprite pic), (Location (PlayArea (px,py)) _bbox))
     = Translate px py $ pic-}
 -- not correct way to render something in a zone
 
+-- this will iterate over objects contained by zone and
+-- display each displayable one at their location
+-- (in order of depth)
+-- then clip the resulting picture to its bounding box
+-- translate to zone position
+-- and return the picture
 {-renderZone :: Zone -> Picture-}
 {-renderZone = undefined-}
 
