@@ -1,5 +1,9 @@
 module HeartsCommon
-    ( module PlayingCards
+    ( -- module PlayingCards
+      Card
+    , Hand
+    , orderPile
+    ----
     , Info(..)
     , Effect(..)
     , PassDir(..)
