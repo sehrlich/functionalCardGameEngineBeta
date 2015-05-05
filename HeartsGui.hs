@@ -56,6 +56,11 @@ data RenderWorld = RenderGame
  -
  - Alternatively zones might want to be a typeclass
  -}
+class HZone z where
+    extractPos :: z -> i -> p
+    insert :: a -> z -> z -- maybe a should also have i in signature?
+    remove :: i -> z -> z
+
 data Zone          = PlayArea Pos | ExactPos Pos
                     -- HandArea Pos | 
                     ---  Zone ManagementStyle Intmap Pos
@@ -65,8 +70,6 @@ insertAtMousePos gw = _mouseCoords $ _renderWorld gw
 insertNextPos :: ManagementStyle
 insertNextPos = undefined
 
-extractPos :: Zone -> Int -> Pos
-extractPos zone oid = undefined
 manageObject :: GuiWorld -> Zone -> Int -> Zone
 manageObject world zone oid = undefined
 deleteObject :: Zone -> Int -> Zone
@@ -349,6 +352,7 @@ renderSprite :: (Sprite, Location) -> Picture
 renderSprite ((Sprite pic), (Location zone _bbox))
     = let
         correctIdForSprite = undefined
+        extractPos (ExactPos a) _ = a
         (px,py) = extractPos zone correctIdForSprite
     in
     Translate px py $ pic
