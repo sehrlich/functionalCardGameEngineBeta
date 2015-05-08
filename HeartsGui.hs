@@ -139,7 +139,7 @@ guiThread inbox outbox pos
                    (800, 600)   -- window size
                    (0, 0)) 	-- window position
 
-
+-- Gui Event loop
 eventHandle :: Event -> GuiWorld -> IO GuiWorld
 eventHandle event world
     = let mIIw = _markIIworld world
@@ -181,6 +181,7 @@ eventHandle event world
                                     [] -> a
             _   -> return $ world
 
+-- Generic Gui -- Gui Elements -- collision detection
 isInRegion :: (Float, Float) -> Location -> Bool
 isInRegion (mx,my) (Location (ExactPos (cx,cy)) (bx,by)) =
     cx - bx/2 <= mx
