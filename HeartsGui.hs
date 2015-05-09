@@ -70,15 +70,6 @@ insertAtMousePos gw = _mouseCoords $ _renderWorld gw
 insertNextPos :: ManagementStyle
 insertNextPos = undefined
 
-{-manageObject :: GuiWorld -> Zone -> Int -> Zone-}
-{-manageObject world zone oid = undefined-}
-{-deleteObject :: Zone -> Int -> Zone-}
-{-deleteObject zone oid = undefined-}
--- with the above in mind, handarea playarea and exactpos (maybe should be window) should be variables maybe?
--- zones may map ids to positions
--- may want to let zone hold zones
--- and right now zone + location are tangled
-
 -- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
 type Bbox          = (Float, Float)
@@ -119,7 +110,7 @@ data GuiState   = DisplayOnly
 
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> Int -> IO ()
 guiThread inbox outbox pos
-    = do 
+    = do
         idSupply <- newSupply
         playIO
             window
