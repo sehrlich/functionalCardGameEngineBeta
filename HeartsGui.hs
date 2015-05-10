@@ -294,7 +294,7 @@ registerCard pos card world
             return w
             {-return $ w{ _dbgInfo = (("releasing around area of " ++show crd):(_dbgInfo w))
                       }-}
-
+ 
 {-registerButton :: Location -> Sprite -> ClickProcess -> GuiWorld -> GuiWorld-}
 {--- registerButton = undefined -- needs to actually register button-}
 {-registerButton loc img action world-}
@@ -377,6 +377,7 @@ renderCard card
 emptyRender :: MarkIIRender
 emptyRender = MarkIIRender IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
 
+-- Hearts specific
 initWorld :: GuiWorld -> GuiWorld
 initWorld =
     registerGeneric
