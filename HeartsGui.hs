@@ -29,6 +29,24 @@ import Graphics.Gloss
 --import Graphics.Gloss.Data.Color (makeColor)
 import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 
+-- Overview:
+-- Gui Stuff
+-- -- Thread
+-- Play thread is responsible for turning a list of game objects into a coherent
+-- picture and letting you interact with it
+-- Spawns child thread for communication with server
+--
+-- -- Communication
+-- Protocol is defined where?
+-- Render Messages: here is list of game objects
+-- Requests: Give back particular input
+--
+-- -- Graphics + Components
+-- 
+-- -- World Type
+-- We have this component-entity system
+-- Want zones to organize rendering of objects
+-- Need some Gui Info such as cursor position
 data GuiWorld = GuiWorld
                 { _renderWorld  :: RenderWorld
                 , _markIIworld  :: MarkIIRender
