@@ -42,10 +42,16 @@ import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 -- Requests: Give back particular input
 --
 -- -- Graphics + Components
+-- Want zones to organize rendering of objects
+--   Multiple types of zones for varying displays:
+--   Are zones inherently ordered?
+--   Zone interaction defaults?
+-- Buttons?
+-- Text Boxes?
 -- 
 -- -- World Type
 -- We have this component-entity system
--- Want zones to organize rendering of objects
+-- List of objects/zones
 -- Need some Gui Info such as cursor position
 data GuiWorld = GuiWorld
                 { _renderWorld  :: RenderWorld
