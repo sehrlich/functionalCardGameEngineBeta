@@ -21,7 +21,8 @@ module HeartsCommon
     , RenderInfo(..)
     , Mode(..)
     ) where
-import PlayingCards
+import PlayingCards (Card(..), Hand, Trick, Suit(..))
+import PlayingCards as P
 import Data.Sequence (Seq)
 import Data.Set (Set)
 import qualified Data.Sequence as S
@@ -56,6 +57,7 @@ type Scores   = Seq Int
 type PlayerID = Int
 type Board    = Seq Hand
 
+--orderPile = P.orderPile
 -- This seems like an ideal thing to practice using quickCheck with
 -- namely, no matter what the trick is, should always have at least one valid play
 isValidPlay :: Hand -> Info -> Card -> Bool
