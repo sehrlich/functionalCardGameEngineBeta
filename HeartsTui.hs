@@ -5,7 +5,7 @@ module HeartsTui
     where
 
 import HeartsCommon
-import PlayingCards -- put in place while modifying HeartsCommon to wrap the actual cards with ids
+import PlayingCards (pretty, readCard, Trick) -- put in place while modifying HeartsCommon to wrap the actual cards with ids
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
@@ -77,7 +77,7 @@ renderText :: RenderInfo -> IO ()
 renderText (Canonical ObjectList objList strList)
     = do
     putStrLn "\ESC[H\ESC[2J"
-    putStrLn $ unwords $ map (pretty . snd) objList
+    putStrLn $ unwords $ map pretty objList
     mapM_ putStrLn strList
 
 renderText (RenderInRound hand played scores) = do

@@ -1,6 +1,6 @@
 module HeartsCommon
     ( -- module PlayingCards
-      Card(..)
+      HeartsCommon.Card
     , Hand
     , orderPile
     , shuffledDeck
@@ -26,7 +26,7 @@ module HeartsCommon
     , RenderInfo(..)
     , Mode(..)
     ) where
-import PlayingCards (Card(..), Hand, Trick, Suit(..))
+import PlayingCards (Suit(..), Card(..))
 import qualified PlayingCards as P
 import Data.Sequence (Seq)
 import Data.Set (Set)
@@ -62,6 +62,10 @@ type Scores   = Seq Int
 type PlayerID = Int
 type Board    = Seq Hand
 
+type Card = P.Card
+type Hand = P.Hand
+type Trick = P.Trick
+
 orderPile = P.orderPile
 trickWinner = P.trickWinner
 drawExactly = P.drawExactly
@@ -70,7 +74,7 @@ unorderPile = P.unorderPile
 
 -- This seems like an ideal thing to practice using quickCheck with
 -- namely, no matter what the trick is, should always have at least one valid play
-isValidPlay :: Hand -> Info -> Card -> Bool
+isValidPlay :: Hand -> Info -> HeartsCommon.Card -> Bool
 isValidPlay hand info card =
     let played          = playedSoFar info
         playIf p        = p card || F.all (not . p) hand
@@ -90,8 +94,8 @@ isValidPlay hand info card =
 -- communication related
 
 -- data Message = ClientToServer | ServerToClient
-data ClientToServer = CtsMove Card
-                    | CtsPassSelection (Set Card)
+data ClientToServer = CtsMove HeartsCommon.Card
+                    | CtsPassSelection (Set HeartsCommon.Card)
                     | CtsDisconnect
                     | CtsAcknowledge
 
@@ -106,7 +110,7 @@ data RenderInfo = RenderServerState Board Info
                 | BetweenRounds Scores
                 | RenderInRound Hand Trick Scores
                 | RenderEmpty
-                | Canonical Mode [(Int,Card)] [String]
+                | Canonical Mode [HeartsCommon.Card] [String]
 
 -- rename eventually to rendermode after figuring out name conflicts
 -- eventually mode will store passing/betweenrounds/renderinround/etc
