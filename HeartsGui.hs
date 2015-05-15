@@ -118,7 +118,7 @@ data MarkIIRender = MarkIIRender
     , targets     :: IntMap Target
     , sprites     :: IntMap Sprite
     , locations   :: IntMap Location -- should go through zones
-    , gameObjects :: IntMap Card
+    , gameObjects :: IntMap HeartsCommon.Card
     -- consider using viewports rather than locations
     , dragged    :: Maybe Int -- ID of card currently being draged
     -- movement paths handed to us
@@ -258,12 +258,15 @@ handleInMessage_ world m
  -}
 register :: RenderInfo -> GuiWorld -> GuiWorld
 register rinfo@(Passing hand _passdir) world =
-    S.foldrWithIndex rgstr (world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}}) (orderPile hand)
+    S.foldrWithIndex rgstr 
+        (world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}}) 
+        (orderPile hand)
     where rgstr i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
 -- will need to register hand after cards have passed
 register rinfo@(RenderInRound hand trick _scores) w =
-    flip (S.foldrWithIndex rgstr') trick $ S.foldrWithIndex rgstr world (orderPile hand)
-    where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
+    flip (S.foldrWithIndex rgstr') trick $ 
+        S.foldrWithIndex rgstr world (orderPile hand)
+    where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Swit----  ch to HandArea
           rgstr' i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), 200  ) -- Switch to PlayArea
           world = w { _renderWorld = (_renderWorld w){_receivedInfo = rinfo}
                     -- , _markIIworld = baseWorld
@@ -289,8 +292,8 @@ registerGeneric mLoc mSpr mZon mTar world
     , _idSupply = newSup
     }
 
-registerCard :: Zone -> Card -> GuiWorld -> GuiWorld
-registerCard pos card world
+registerCard :: Zone -> HeartsCommon.Card -> GuiWorld -> GuiWorld
+registerCard pos card@(_hid , _pcard) world
     = 
     let mIIw = _markIIworld world
         (cid, newSup) = freshId $ _idSupply world
@@ -389,8 +392,8 @@ renderSprite ((Sprite pic), (Location (PlayArea (px,py)) _bbox))
 {-renderZone :: Zone -> Picture-}
 {-renderZone = undefined-}
 
-renderCard :: Card -> Picture
-renderCard card
+renderCard :: HeartsCommon.Card -> Picture
+renderCard (_, card)
     = Pictures
         [ Color magenta $ rectangleSolid (60) (80)
         , Color (greyN 0.575) $ circleSolid 20

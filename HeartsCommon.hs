@@ -47,7 +47,7 @@ data PassDir = PassLeft
 data Info =
     TrickInfo
     { curPlayer       :: PlayerID
-    , playedSoFar     :: Trick
+    , playedSoFar     :: P.Trick
     , pointsCollected :: Scores
     , heartsBroken    :: Bool
     }
@@ -62,20 +62,30 @@ type Scores   = Seq Int
 type PlayerID = Int
 type Board    = Seq Hand
 
-type Card = P.Card
-type Hand = P.Hand
-type Trick = P.Trick
+type Card = (Int, P.Card)
+type Hand = Set HeartsCommon.Card
+-- type Trick = P.Trick
+type Trick = Seq HeartsCommon.Card
 
-orderPile = P.orderPile
-trickWinner = P.trickWinner
-drawExactly = P.drawExactly
-shuffledDeck = P.shuffledDeck
+orderPile :: Hand -> Trick
+orderPile = undefined
+-- P.orderPile . convertHand
+-- unorderPile :: P.OrdPile -> P.Pile
 unorderPile = P.unorderPile
+
+trickWinner :: P.Trick -> Maybe Suit -> Int
+trickWinner = P.trickWinner
+
+--
+drawExactly = P.drawExactly
+
+shuffledDeck :: IO [P.Card]
+shuffledDeck = P.shuffledDeck
 
 -- This seems like an ideal thing to practice using quickCheck with
 -- namely, no matter what the trick is, should always have at least one valid play
-isValidPlay :: Hand -> Info -> HeartsCommon.Card -> Bool
-isValidPlay hand info card =
+isValidPlay' :: P.Hand -> Info -> P.Card -> Bool
+isValidPlay' hand info card =
     let played          = playedSoFar info
         playIf p        = p card || F.all (not . p) hand
         on_lead         = S.null played
@@ -90,6 +100,15 @@ isValidPlay hand info card =
         then (not . isGarbage) card || heartsBroken info ||  F.all isGarbage hand
         else playIf matchesLead && not (isGarbage card && isFirstTrick)
 
+
+convertHand :: HeartsCommon.Hand -> P.Hand
+convertHand = undefined
+convertTrick :: HeartsCommon.Trick -> P.Trick
+convertTrick = undefined
+
+isValidPlay :: HeartsCommon.Hand -> Info -> HeartsCommon.Card -> Bool
+isValidPlay hand info card =
+    isValidPlay' (convertHand hand) info (snd card)
 ----
 -- communication related
 
@@ -106,9 +125,9 @@ data ServerToClient = StcGetMove Hand Info
                     | StcRender RenderInfo
 
 data RenderInfo = RenderServerState Board Info
-                | Passing Hand PassDir
+                | Passing HeartsCommon.Hand PassDir
                 | BetweenRounds Scores
-                | RenderInRound Hand Trick Scores
+                | RenderInRound HeartsCommon.Hand Trick Scores
                 | RenderEmpty
                 | Canonical Mode [HeartsCommon.Card] [String]
 
