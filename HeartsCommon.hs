@@ -76,7 +76,7 @@ unorderPile = P.unorderPile
 trickWinner :: P.Trick -> Maybe Suit -> Int
 trickWinner = P.trickWinner
 
---
+drawExactly :: Int -> P.Trick -> Maybe (P.Trick, P.Trick)
 drawExactly = P.drawExactly
 
 shuffledDeck :: IO [P.Card]
@@ -103,8 +103,8 @@ isValidPlay' hand info card =
 
 convertHand :: HeartsCommon.Hand -> P.Hand
 convertHand = undefined
-convertTrick :: HeartsCommon.Trick -> P.Trick
-convertTrick = undefined
+-- convertTrick :: HeartsCommon.Trick -> P.Trick
+-- convertTrick = undefined
 
 isValidPlay :: HeartsCommon.Hand -> Info -> HeartsCommon.Card -> Bool
 isValidPlay hand info card =
