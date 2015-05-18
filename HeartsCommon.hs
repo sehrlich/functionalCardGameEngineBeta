@@ -73,6 +73,11 @@ orderPile = undefined
 -- unorderPile :: P.OrdPile -> P.Pile
 unorderPile = P.unorderPile
 
+-- need a liftCard type function
+-- not quite sure how to go about it
+-- so that it takes a function that operates on cards
+-- and instead operates on HCards
+
 trickWinner :: P.Trick -> Maybe Suit -> Int
 trickWinner = P.trickWinner
 
