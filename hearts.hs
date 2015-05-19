@@ -170,6 +170,7 @@ gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores 
         Effect move ->
             gameLoop players $ move world'
 
+-- Maybe this gets moved to heartsCommon as well
 computeWinner :: Info -> (PlayerID, Scores, Bool)
 computeWinner (TrickInfo started played scores broken) =
     let winner = (trickWinner played Nothing + started) `mod` 4
