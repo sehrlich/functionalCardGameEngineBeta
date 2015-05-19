@@ -28,6 +28,7 @@ import qualified Control.Concurrent.Async as Async
 -- import Control.Concurrent.Supply
 -- there's a reasonable chance we need this here and need to supply it to each child
 
+-- I should add object ids here upon generating shuffled deck
 main :: IO ()
 main = do
         p0 <- constructGUIPlayer 0
