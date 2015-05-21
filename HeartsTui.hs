@@ -71,13 +71,13 @@ getInput = do
         Nothing -> do
                     putStrLn "Could not interpret move!"
                     getInput
-        Just c -> return c
+        Just c -> return (0,c)
 
 renderText :: RenderInfo -> IO ()
 renderText (Canonical ObjectList objList strList)
     = do
     putStrLn "\ESC[H\ESC[2J"
-    putStrLn $ unwords $ map pretty objList
+    putStrLn $ unwords $ map (pretty . snd) objList
     mapM_ putStrLn strList
 
 renderText (RenderInRound hand played scores) = do
@@ -116,7 +116,7 @@ renderTextBoard board activePlayer = mapM_ printHand [0..3]
                         putStrLn $ renderTextHand $ board `S.index` i
 
 renderTextHand :: Hand -> String
-renderTextHand hand = unwords $ map pretty $ Z.toList hand
+renderTextHand hand = unwords $ map (pretty . snd) $ Z.toList hand
 
 renderTextPlay :: Trick -> String
 renderTextPlay played = "Currently:" ++ F.concat (fmap ((' ':).pretty ) played)
