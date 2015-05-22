@@ -48,7 +48,7 @@ import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 --   Zone interaction defaults?
 -- Buttons?
 -- Text Boxes?
--- 
+--
 -- -- World Type
 -- We have this component-entity system
 -- List of objects/zones
@@ -86,7 +86,7 @@ class HZone z where
     remove :: i -> z -> z
 
 data Zone          = PlayArea Pos | ExactPos Pos
-                    -- HandArea Pos | 
+                    -- HandArea Pos |
                     ---  Zone ManagementStyle Intmap Pos
 type ManagementStyle = GuiWorld -> Pos
 insertAtMousePos :: ManagementStyle
@@ -258,7 +258,7 @@ handleInMessage_ world m
  -}
 register :: RenderInfo -> GuiWorld -> GuiWorld
 register rinfo@(Passing hand _passdir) world =
-    S.foldrWithIndex rgstr 
+    S.foldrWithIndex rgstr
         (world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}}) 
         (orderPile hand)
     where rgstr i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
@@ -278,7 +278,7 @@ register (RenderEmpty) w = w{ _markIIworld = emptyRender}
 
 registerGeneric :: Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
 registerGeneric mLoc mSpr mZon mTar world
-    = 
+    =
     let mIIw = _markIIworld world
         (idNo, newSup) = freshId $ _idSupply world
     in     
@@ -305,8 +305,7 @@ registerCard pos card@(_hid , _pcard) world
     world
         { _markIIworld = mIIw
             { clickables  = IntMap.insert cid c    (clickables  mIIw)
-            , targets     = IntMap.insert cid t    (targets     mIIw)
-            , sprites     = IntMap.insert cid s    (sprites     mIIw)
+            , targets     = IntMap.insert cid t    (targets     mIIw) , sprites     = IntMap.insert cid s    (sprites     mIIw)
             , locations   = IntMap.insert cid l    (locations   mIIw)
             , gameObjects = IntMap.insert cid card (gameObjects mIIw)
             }
