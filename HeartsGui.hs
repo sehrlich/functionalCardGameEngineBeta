@@ -259,12 +259,12 @@ handleInMessage_ world m
 register :: RenderInfo -> GuiWorld -> GuiWorld
 register rinfo@(Passing hand _passdir) world =
     S.foldrWithIndex rgstr
-        (world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}}) 
+        (world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}})
         (orderPile hand)
     where rgstr i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
 -- will need to register hand after cards have passed
 register rinfo@(RenderInRound hand trick _scores) w =
-    flip (S.foldrWithIndex rgstr') trick $ 
+    flip (S.foldrWithIndex rgstr') trick $
         S.foldrWithIndex rgstr world (orderPile hand)
     where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Swit----  ch to HandArea
           rgstr' i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), 200  ) -- Switch to PlayArea
@@ -281,7 +281,7 @@ registerGeneric mLoc mSpr mZon mTar world
     =
     let mIIw = _markIIworld world
         (idNo, newSup) = freshId $ _idSupply world
-    in     
+    in
     world
     { _markIIworld = mIIw
         { clickables = IntMap.alter (const mZon) idNo (clickables mIIw)
@@ -294,7 +294,7 @@ registerGeneric mLoc mSpr mZon mTar world
 
 registerCard :: Zone -> HeartsCommon.Card -> GuiWorld -> GuiWorld
 registerCard pos card@(_hid , _pcard) world
-    = 
+    =
     let mIIw = _markIIworld world
         (cid, newSup) = freshId $ _idSupply world
         c = Clickable cid $ clickCard cid card
@@ -320,7 +320,7 @@ registerCard pos card@(_hid , _pcard) world
             return w
             {-return $ w{ _dbgInfo = (("releasing around area of " ++show crd):(_dbgInfo w))
                       }-}
- 
+
 {-registerButton :: Location -> Sprite -> ClickProcess -> GuiWorld -> GuiWorld-}
 {--- registerButton = undefined -- needs to actually register button-}
 {-registerButton loc img action world-}
@@ -352,7 +352,7 @@ render gw
     = Pictures [renderable, dragging]
     -- the proper alternative here is to iterate over zones rendering everything inside them
     -- can render debug info here as well
-    where 
+    where
        renderable =
             Pictures $ map renderSprite
             $ IntMap.elems
@@ -424,11 +424,11 @@ initWorld =
                     (_, DisplayOnly)   -> world -- {_dbgInfo = "Released in play area":(_dbgInfo world)}
                     (Just i, SelectCardsToPass soFar) ->
                         let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
-                            (mx,my) = _mouseCoords renW 
+                            (mx,my) = _mouseCoords renW
                         in
                         if Z.size soFar < 3 && Z.notMember card soFar
                             -- Card not in set and size of set less than 3
-                        then world  { _renderWorld 
+                        then world  { _renderWorld
                                     = renW  { _dbgInfo = "passing this card ":(_dbgInfo renW)
                                             , _guiState = SelectCardsToPass (Z.insert card soFar)
                                             }
@@ -441,7 +441,7 @@ initWorld =
                     (Just i, SelectCardToPlay hand info Nothing)  ->
                         -- let card = (IntMap.! (gameObjects mIIw) i)
                         let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
-                            (mx,my) = _mouseCoords renW 
+                            (mx,my) = _mouseCoords renW
                         in
                         if isValidPlay hand info card
                         then world
@@ -485,7 +485,7 @@ initWorld =
                                     }
                     )
             )
-    
+
 
 emptyWorld :: Int -> Supply -> GuiWorld
 emptyWorld pos sup = (GuiWorld (RenderGame RenderEmpty DisplayOnly [] pos (0,0)) emptyRender sup)  -- world
