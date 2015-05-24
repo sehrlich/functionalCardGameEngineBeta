@@ -51,6 +51,7 @@ data Info =
     , pointsCollected :: Scores
     , heartsBroken    :: Bool
     }
+
 data World = InRound Board Stack Info
             | StartGame
             | StartRound PassDir Scores
