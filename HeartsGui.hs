@@ -144,9 +144,6 @@ guiThread inbox outbox pos
             drawWorld        -- picture to display
             eventHandle      -- event handler
             timeHandle       -- time update
-            -- It is plausible that we want to replace commHandle here
-            -- with a timeHandle that checks commHandle and also checks
-            -- animations and so forth
     where timeHandle = (commHandle inbox outbox)
           window = (InWindow
                    "Gloss" 	    -- window title
