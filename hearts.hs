@@ -90,6 +90,7 @@ gameLoop _players (GameOver scores)
 gameLoop players (StartRound passDir scores)
     = do
     deck <- shuffledDeck
+    -- need shuffled deck to have HCards, so zip with ids
     let deal = fmap (unorderPile) $ S.unfoldr (drawExactly 13) $ S.fromList deck
     RoundOver round_scores <- gameLoop players $ PassingPhase deal passDir
 
