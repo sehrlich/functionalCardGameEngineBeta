@@ -273,6 +273,7 @@ register (BetweenRounds _) w = w{ _markIIworld = emptyRender}
 register (Canonical _ _ _) w = w
 register (RenderEmpty) w = w{ _markIIworld = emptyRender}
 
+{- Generic Gui elements -}
 registerGeneric :: Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
 registerGeneric mLoc mSpr mZon mTar world
     =
