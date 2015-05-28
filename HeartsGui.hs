@@ -81,13 +81,20 @@ data RenderWorld = RenderGame
  - Alternatively zones might want to be a typeclass
  -}
 class HZone z where
-    extractPos :: z -> i -> p
+    extractPos :: z -> i -> Pos
     insert :: a -> z -> z -- maybe a should also have i in signature?
     remove :: i -> z -> z
 
 data Zone          = PlayArea Pos | ExactPos Pos
                     -- HandArea Pos |
                     ---  Zone ManagementStyle Intmap Pos
+instance HZone Zone where
+    extractPos z _i = case z of
+                      (PlayArea p) -> p
+                      (ExactPos p) -> p
+    insert _a z = z
+    remove _i z = z
+
 type ManagementStyle = GuiWorld -> Pos
 insertAtMousePos :: ManagementStyle
 insertAtMousePos gw = _mouseCoords $ _renderWorld gw
