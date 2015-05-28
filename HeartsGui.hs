@@ -290,6 +290,7 @@ registerGeneric mLoc mSpr mZon mTar world
     , _idSupply = newSup
     }
 
+{- Generic Gui elements -}
 registerCard :: Zone -> HeartsCommon.Card -> GuiWorld -> GuiWorld
 registerCard pos card@(_hid , _pcard) world
     =
