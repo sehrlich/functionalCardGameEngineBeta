@@ -376,14 +376,9 @@ renderSprite :: (Sprite, Location) -> Picture
 renderSprite ((Sprite pic), (Location zone _bbox))
     = let
         correctIdForSprite = undefined
-        extractPos (ExactPos a) _ = a
         (px,py) = extractPos zone correctIdForSprite
     in
     Translate px py $ pic
-renderSprite ((Sprite pic), (Location (ExactPos (px,py)) _bbox))
-    = Translate px py $ pic
-renderSprite ((Sprite pic), (Location (PlayArea (px,py)) _bbox))
-    = Translate px py $ pic
 {-renderSprite ((Sprite pic), (Location (HandArea (px,py)) _bbox))
     = Translate px py $ pic-}
 -- not correct way to render something in a zone
