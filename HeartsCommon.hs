@@ -72,7 +72,8 @@ orderPile :: Hand -> Trick
 orderPile = undefined
 -- P.orderPile . convertHand
 -- unorderPile :: P.OrdPile -> P.Pile
-unorderPile = P.unorderPile
+unorderPile :: Trick -> Hand
+unorderPile = undefined P.unorderPile
 
 -- need a liftCard type function
 -- not quite sure how to go about it
