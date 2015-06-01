@@ -95,11 +95,11 @@ instance HZone Zone where
     insert _a z = z
     remove _i z = z
 
-type ManagementStyle = GuiWorld -> Pos
-insertAtMousePos :: ManagementStyle
+{-type ManagementStyle = GuiWorld -> Pos-}
+{-insertAtMousePos :: ManagementStyle
 insertAtMousePos gw = _mouseCoords $ _renderWorld gw
 insertNextPos :: ManagementStyle
-insertNextPos = undefined
+insertNextPos = undefined-}
 
 -- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
