@@ -171,20 +171,6 @@ gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores 
         Effect move ->
             gameLoop players $ move world'
 
--- Maybe this gets moved to heartsCommon as well
-computeWinner :: Info -> (PlayerID, Scores, Bool)
-computeWinner (TrickInfo started played scores broken) =
-    let winner = (trickWinner played Nothing + started) `mod` 4
-        pts (Card s r) | s==Hearts = 1
-                       | r==12 && s==Spades = 13
-                       | otherwise = 0
-        trickVal    = F.sum $ fmap pts played
-        new_scores  = S.adjust (+ trickVal) winner scores
-        isHeart c   = _suit c == Hearts
-        broken'     = broken || F.foldr ((||).isHeart) False played
-    in
-        (winner, new_scores, broken')
-
 play :: Card -> World -> World
 play card (InRound board _stack (TrickInfo cur_player played scores bool)) =
     let new_board = S.adjust (Z.delete card) cur_player board

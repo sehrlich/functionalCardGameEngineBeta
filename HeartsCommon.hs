@@ -6,7 +6,7 @@ module HeartsCommon
     , shuffledDeck
     , unorderPile
     , drawExactly
-    , trickWinner
+    , computeWinner
     , Suit(..)
     ----
     , Info(..)
@@ -82,6 +82,20 @@ unorderPile = undefined P.unorderPile
 
 trickWinner :: P.Trick -> Maybe Suit -> Int
 trickWinner = P.trickWinner
+
+-- Maybe this gets moved to heartsCommon as well
+computeWinner :: Info -> (PlayerID, Scores, Bool)
+computeWinner (TrickInfo started played scores broken) =
+    let winner = (trickWinner played Nothing + started) `mod` 4
+        pts (Card s r) | s==Hearts = 1
+                       | r==12 && s==Spades = 13
+                       | otherwise = 0
+        trickVal    = F.sum $ fmap pts played
+        new_scores  = S.adjust (+ trickVal) winner scores
+        isHeart c   = _suit c == Hearts
+        broken'     = broken || F.foldr ((||).isHeart) False played
+    in
+        (winner, new_scores, broken')
 
 drawExactly :: Int -> P.Trick -> Maybe (P.Trick, P.Trick)
 drawExactly = P.drawExactly
