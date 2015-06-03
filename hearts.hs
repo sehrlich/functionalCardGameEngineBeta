@@ -90,7 +90,7 @@ gameLoop _players (GameOver scores)
 gameLoop players (StartRound passDir scores)
     = do
     deck <- shuffledDeck
-    -- need shuffled deck to have HCards, so zip with ids
+    -- need shuffled deck to have HCards, so need to pass supply to shuffled deck with ids
     let deal = fmap (unorderPile) $ S.unfoldr (drawExactly 13) $ S.fromList deck
     RoundOver round_scores <- gameLoop players $ PassingPhase deal passDir
 
@@ -136,7 +136,9 @@ gameLoop players (PassingPhase deal passDir)
                 PassRight   -> rotate $ rotate $ rotate s
         return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s
 
-    let who_starts = fromJust $ Z.member (Card Clubs 2) `S.findIndexL` board
+    let who_starts = fromJust $ Z.member (undefined {-Card-} Clubs 2) `S.findIndexL` board -- need to change member to a find predicate that ignores the ID
+    --either that or make the two of clubs card what we're seaching for
+    --but that seems much worse
     gameLoop players $ InRound board [NewTrick]
                      $ TrickInfo who_starts S.empty (S.fromList [0,0,0,0]) False
 

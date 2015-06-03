@@ -100,8 +100,11 @@ computeWinner (TrickInfo started played scores broken) =
 drawExactly :: Int -> P.Trick -> Maybe (P.Trick, P.Trick)
 drawExactly = P.drawExactly
 
-shuffledDeck :: IO [P.Card]
-shuffledDeck = P.shuffledDeck
+shuffledDeck :: IO [HeartsCommon.Card]
+shuffledDeck = do
+    cards <- P.shuffledDeck
+    ids <- undefined -- FIXME should be drawn from idsupply
+    return $ zip ids cards
 
 -- This seems like an ideal thing to practice using quickCheck with
 -- namely, no matter what the trick is, should always have at least one valid play
