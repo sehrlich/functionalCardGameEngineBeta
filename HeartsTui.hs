@@ -85,9 +85,10 @@ renderText (RenderInRound hand played scores) = do
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    putStrLn $ renderTextPlay played
+    putStrLn $ renderTextPlay (convert played)
     putStrLn $ renderTextHand hand
     renderTextScores scores
+    where convert = undefined -- but should convert pcards and hcards
 
 renderText (RenderServerState board info) = do
     -- if we should only be rendering the current players hand then do some checking
