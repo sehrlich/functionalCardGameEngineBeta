@@ -100,7 +100,7 @@ computeWinner (TrickInfo started played scores broken) =
 drawExactly :: Int -> P.Trick -> Maybe (P.Trick, P.Trick)
 drawExactly = P.drawExactly
 
-shuffledDeck :: IO [HeartsCommon.Card]
+shuffledDeck :: IO [HeartsCommon.Card] -- should take in idsupply
 shuffledDeck = do
     cards <- P.shuffledDeck
     ids <- undefined -- FIXME should be drawn from idsupply
