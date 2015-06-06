@@ -135,6 +135,7 @@ data MarkIIRender = MarkIIRender
     -- will also want a set of logical zones that arrange things inside of them e,g, hand play
 type DebugInfo = [String]
 
+-- This should get changed
 data GuiState   = DisplayOnly
                 | SelectCardsToPass Hand -- should maybe have this as pile
                 | SelectCardToPlay Hand Info (Maybe Card)
