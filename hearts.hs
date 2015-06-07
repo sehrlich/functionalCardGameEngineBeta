@@ -149,6 +149,7 @@ gameLoop _players (InRound _board [] _info)
 gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores _broken))
     = do
     -- broadcast_' players $ StcRender . \i -> RenderInRound (S.index board i) played scores
+    -- FIXME resolve cards vs hcards
     broadcast_' players $ StcRender . (flip (flip RenderInRound played) scores) . (S.index board)
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty
