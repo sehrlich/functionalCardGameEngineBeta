@@ -97,6 +97,7 @@ computeWinner (TrickInfo started played scores broken) =
     in
         (winner, new_scores, broken')
 
+-- drawExactly needs to use HeartsCommon.Cards
 drawExactly :: Int -> P.Trick -> Maybe (P.Trick, P.Trick)
 drawExactly = P.drawExactly
 
