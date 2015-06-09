@@ -47,7 +47,7 @@ data PassDir = PassLeft
 data Info =
     TrickInfo
     { curPlayer       :: PlayerID
-    , playedSoFar     :: P.Trick
+    , playedSoFar     :: P.Trick -- should be just a Trick
     , pointsCollected :: Scores
     , heartsBroken    :: Bool
     }
