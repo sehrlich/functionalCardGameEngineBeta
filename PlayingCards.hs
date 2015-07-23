@@ -1,20 +1,16 @@
 module PlayingCards
     ( -- Types
       Suit(..)
-    , Card(..)
-    -- , Trick
-    -- , Hand
+    , PlayingCard(..)
     -- Utility
     , matches
     -- IO
-    , pretty
+    , prettySym
     , readCard     -- | Interpret a two character string as a card
     -- deck
     , shuffledDeck -- | Provides a shuffled standard poker deck
     -- , draw
     , drawExactly
-    -- , orderPile    -- | Converts a Hand to a Trick
-    -- , unorderPile  -- | Converts a Trick to a Hand
     -- , stdDeck
     -- , shuffle
     -- trick taking utilities
@@ -45,9 +41,12 @@ import Data.Set (Set)
  -
  -}
 
-class Card c where
-   suit :: c -> Suit
-   rank :: c -> Int
+-- one line of thinking is that Card should have Show and Eq with default implementations based off suit and rank. Instead, we're just going to add prettyprint to card (with no colors)
+class (Show c) => PlayingCard c where
+   suit   :: c -> Suit
+   rank   :: c -> Int
+   pretty :: c -> String
+   pretty c =  ("-A23456789TJQKA"!!(rank c)) : (head . show $ suit c) : ""
 
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord)
 data TestCard = TCard {_suit::Suit, _rank::Int} deriving (Eq, Ord) -- maybe later (Generic, Typeable) --Show
@@ -55,15 +54,15 @@ data TestCard = TCard {_suit::Suit, _rank::Int} deriving (Eq, Ord) -- maybe late
 -- type OrdPile = Seq Card -- ordered
 -- type Pile = Set Card -- unordered
 -- type Hand = Pile
-instance Card TestCard where
+instance PlayingCard TestCard where
     suit = _suit
     rank = _rank
 
 instance Show TestCard
     where show (TCard s r) = ("-A23456789TJQKA"!!r) : (head $ show s) : ""
 
-pretty :: Card c => c -> String
-pretty c =
+prettySym :: PlayingCard c => c -> String
+prettySym c =
     let (col,pic) = case (suit c) of
             Clubs       -> ([1,30,47], "♣")
             Spades      -> ([1,30,47], "♠")
@@ -126,7 +125,7 @@ _cardback = colorize [104] "()"
 
 {--| Checks that the card played follows suit if able --}
 
-followsSuit :: Card c => Set c -> Seq c -> c -> Bool
+followsSuit ::PlayingCard c => Set c -> Seq c -> c -> Bool
 followsSuit hand played card =
     let on_lead         = Seq.null played
         matchesLead c   = suit c == suit (Seq.index played 0)
@@ -136,7 +135,7 @@ followsSuit hand played card =
 {--| Computes the index of the card that won the trick (maybe trump)
  - Note that this is relative to the first player in the trick
  - --}
-trickWinner :: Card c => Seq c -> Maybe Suit -> Int
+trickWinner :: PlayingCard c => Seq c -> Maybe Suit -> Int
 trickWinner played trump =
     let lead_suit = suit $ Seq.index played 0
         (winner, _best_card_val) = F.maximumBy (compare `on` snd) $ flip Seq.mapWithIndex played $ (. (cardVal lead_suit trump)) . (,)
@@ -149,7 +148,7 @@ trickWinner played trump =
                 r + (if s == lead then 15 else 0)
                 + (if Just s == maybeTrump then 50 else 0)
 
-matches :: Card c => Int -> Suit -> c -> Bool
+matches :: PlayingCard c => Int -> Suit -> c -> Bool
 matches r s c = (suit c == s) && (rank c == r)
 
 --  {--| Randomly draw n cards from pile (until pile is empty), return the drawn stack and the reduced pile --}
@@ -160,7 +159,7 @@ matches r s c = (suit c == s) && (rank c == r)
 --  --    else Nothing
 
 {--| Draw precisely n cards from pile and return the drawn stack and the reduced pile or fail with Nothing --}
-drawExactly :: Card c => Int -> Seq c -> Maybe (Seq c, Seq c)
+drawExactly :: PlayingCard c => Int -> Seq c -> Maybe (Seq c, Seq c)
 drawExactly n deck =
     if n <= Seq.length deck
     then Just $ Seq.splitAt n deck

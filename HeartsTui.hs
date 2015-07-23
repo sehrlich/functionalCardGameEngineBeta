@@ -5,7 +5,7 @@ module HeartsTui
     where
 
 import HeartsCommon
-import PlayingCards (pretty, readCard) -- put in place while modifying HeartsCommon to wrap the actual cards with ids
+import PlayingCards (readCard) -- put in place while modifying HeartsCommon to wrap the actual cards with ids
 import qualified PlayingCards as P -- put in place while modifying HeartsCommon to wrap the actual cards with ids
 import qualified Data.Set as Z
 import qualified Data.Sequence as S

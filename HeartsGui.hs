@@ -398,7 +398,7 @@ renderCard card
     = Pictures
         [ Color magenta $ rectangleSolid (60) (80)
         , Color (greyN 0.575) $ circleSolid 20
-        , Color black $ Translate (-10) (-5) $ Scale (0.125) (0.125) $ Text $ show card
+        , Color black $ Translate (-10) (-5) $ Scale (0.125) (0.125) $ Text $ pretty card
         , Color black $ rectangleWire (60) (80)
         ]
 

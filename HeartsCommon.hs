@@ -1,6 +1,7 @@
 module HeartsCommon
     ( -- module PlayingCards
-      Card(..)
+      PlayingCard(..)
+    , Card(..)
     , Trick
     , Hand
     , shuffledDeck
@@ -28,7 +29,7 @@ module HeartsCommon
     , RenderInfo(..)
     , Mode(..)
     ) where
-import PlayingCards (Suit(..))
+import PlayingCards (Suit(..), PlayingCard(..))
 import qualified PlayingCards as P
 import Data.Sequence (Seq)
 import Data.Set (Set)
@@ -72,7 +73,7 @@ data Card = Card
     , _id    :: Int
     } deriving (Show, Eq, Ord)
 
-instance P.Card Card where
+instance PlayingCard Card where
     suit = _suit
     rank = _rank
 
