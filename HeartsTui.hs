@@ -5,7 +5,8 @@ module HeartsTui
     where
 
 import HeartsCommon
-import PlayingCards (pretty, readCard, Trick) -- put in place while modifying HeartsCommon to wrap the actual cards with ids
+import PlayingCards (pretty, readCard) -- put in place while modifying HeartsCommon to wrap the actual cards with ids
+import qualified PlayingCards as P -- put in place while modifying HeartsCommon to wrap the actual cards with ids
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
@@ -71,13 +72,13 @@ getInput = do
         Nothing -> do
                     putStrLn "Could not interpret move!"
                     getInput
-        Just c -> return (0,c)
+        Just c -> return $ Card (P.suit c) (P.rank c) 0
 
 renderText :: RenderInfo -> IO ()
 renderText (Canonical ObjectList objList strList)
     = do
     putStrLn "\ESC[H\ESC[2J"
-    putStrLn $ unwords $ map (pretty . snd) objList
+    putStrLn $ unwords $ map pretty objList
     mapM_ putStrLn strList
 
 renderText (RenderInRound hand played scores) = do
@@ -85,10 +86,9 @@ renderText (RenderInRound hand played scores) = do
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    putStrLn $ renderTextPlay (convert played)
+    putStrLn $ renderTextPlay played
     putStrLn $ renderTextHand hand
     renderTextScores scores
-    where convert = undefined -- but should convert pcards and hcards
 
 renderText (RenderServerState board info) = do
     -- if we should only be rendering the current players hand then do some checking
@@ -117,7 +117,7 @@ renderTextBoard board activePlayer = mapM_ printHand [0..3]
                         putStrLn $ renderTextHand $ board `S.index` i
 
 renderTextHand :: Hand -> String
-renderTextHand hand = unwords $ map (pretty . snd) $ Z.toList hand
+renderTextHand hand = unwords $ map pretty $ Z.toList hand
 
 renderTextPlay :: Trick -> String
 renderTextPlay played = "Currently:" ++ F.concat (fmap ((' ':).pretty ) played)

@@ -136,7 +136,7 @@ gameLoop players (PassingPhase deal passDir)
                 PassRight   -> rotate $ rotate $ rotate s
         return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s
 
-    let who_starts = fromJust $ Z.member (undefined {-Card-} Clubs 2) `S.findIndexL` board -- need to change member to a find predicate that ignores the ID
+    let who_starts = fromJust $ F.any (matches 2 Clubs) `S.findIndexL` board -- need to change member to a find predicate that ignores the ID
     --either that or make the two of clubs card what we're seaching for
     --but that seems much worse
     gameLoop players $ InRound board [NewTrick]
@@ -149,7 +149,6 @@ gameLoop _players (InRound _board [] _info)
 gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores _broken))
     = do
     -- broadcast_' players $ StcRender . \i -> RenderInRound (S.index board i) played scores
-    -- FIXME resolve cards vs hcards
     broadcast_' players $ StcRender . (flip (flip RenderInRound played) scores) . (S.index board)
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty

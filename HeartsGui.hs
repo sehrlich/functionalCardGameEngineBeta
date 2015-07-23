@@ -299,8 +299,8 @@ registerGeneric mLoc mSpr mZon mTar world
     }
 
 {- Generic Gui elements -}
-registerCard :: Zone -> HeartsCommon.Card -> GuiWorld -> GuiWorld
-registerCard pos card@(_hid , _pcard) world
+registerCard :: Zone -> Card -> GuiWorld -> GuiWorld
+registerCard pos card world
     =
     let mIIw = _markIIworld world
         (cid, newSup) = freshId $ _idSupply world
@@ -393,8 +393,8 @@ renderSprite ((Sprite pic), (Location zone _bbox))
 {-renderZone :: Zone -> Picture-}
 {-renderZone = undefined-}
 
-renderCard :: HeartsCommon.Card -> Picture
-renderCard (_, card)
+renderCard :: Card -> Picture
+renderCard card
     = Pictures
         [ Color magenta $ rectangleSolid (60) (80)
         , Color (greyN 0.575) $ circleSolid 20

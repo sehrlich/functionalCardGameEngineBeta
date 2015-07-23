@@ -2,17 +2,19 @@ module PlayingCards
     ( -- Types
       Suit(..)
     , Card(..)
-    , Trick
-    , Hand
+    -- , Trick
+    -- , Hand
     -- Utility
+    , matches
+    -- IO
     , pretty
     , readCard     -- | Interpret a two character string as a card
     -- deck
     , shuffledDeck -- | Provides a shuffled standard poker deck
-    , draw
+    -- , draw
     , drawExactly
-    , orderPile    -- | Converts a Hand to a Trick
-    , unorderPile  -- | Converts a Trick to a Hand
+    -- , orderPile    -- | Converts a Hand to a Trick
+    -- , unorderPile  -- | Converts a Trick to a Hand
     -- , stdDeck
     -- , shuffle
     -- trick taking utilities
@@ -28,27 +30,46 @@ import System.Random
 import qualified Data.Foldable as F
 import qualified Data.Sequence as Seq
 import Data.Sequence (Seq)
-import qualified Data.Set as Set
 import Data.Set (Set)
 
+{- TODO:
+ - we want to make HCards be playing cards with ID
+ - 
+ - In an OO framework, the natural thing to do would be to make HCard a subtype of Card
+ - But we don't do that
+ - Instead we'll make Card a typeclass (along with a default instantiation for testing)
+ - and update all our functions appropriately
+ - 
+ - Then HCard is just a new type of this typeclass, and everything will automatically work
+ -
+ -
+ -}
+
+class Card c where
+   suit :: c -> Suit
+   rank :: c -> Int
+
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord)
-data Card = Card {_suit::Suit, _rank::Int} deriving (Eq, Ord) -- maybe later (Generic, Typeable) --Show
-type Trick   = Seq Card -- ordered
-type OrdPile = Seq Card -- ordered
-type Pile = Set Card -- unordered
-type Hand = Pile
+data TestCard = TCard {_suit::Suit, _rank::Int} deriving (Eq, Ord) -- maybe later (Generic, Typeable) --Show
+-- type Trick   = Seq Card -- ordered
+-- type OrdPile = Seq Card -- ordered
+-- type Pile = Set Card -- unordered
+-- type Hand = Pile
+instance Card TestCard where
+    suit = _suit
+    rank = _rank
 
-instance Show Card
-    where show (Card s r) = ("-A23456789TJQKA"!!r) : (head $ show s) : ""
+instance Show TestCard
+    where show (TCard s r) = ("-A23456789TJQKA"!!r) : (head $ show s) : ""
 
-pretty :: Card -> String
-pretty (Card s r) =
-    let (col,pic) = case s of
+pretty :: Card c => c -> String
+pretty c =
+    let (col,pic) = case (suit c) of
             Clubs       -> ([1,30,47], "♣")
             Spades      -> ([1,30,47], "♠")
             Hearts      -> ([1,31,47], "♥")
             Diamonds    -> ([1,31,47], "♦")
-    in colorize col $ ("-A23456789TJQKA"!!r) : pic
+    in colorize col $ ("-A23456789TJQKA"!! (rank c)) : pic
 
 readSuit :: Char -> Suit
 readSuit s = case s of
@@ -78,8 +99,8 @@ readRank r
         | otherwise = 0
         -- temporary thing should correspond to card not in hand
 
-readCard :: String -> Maybe Card
-readCard [r,s] = Just (Card (readSuit s) (readRank r))
+readCard :: String -> Maybe TestCard
+readCard [r,s] = Just (TCard (readSuit s) (readRank r))
 readCard _     = Nothing
 
 colorize :: [Int] -> String -> String
@@ -104,51 +125,54 @@ _cardback = colorize [104] "()"
        {-else hand-}
 
 {--| Checks that the card played follows suit if able --}
-followsSuit :: Hand -> Trick -> Card -> Bool
+
+followsSuit :: Card c => Set c -> Seq c -> c -> Bool
 followsSuit hand played card =
     let on_lead         = Seq.null played
-        matchesLead c   = _suit c == _suit (Seq.index played 0)
+        matchesLead c   = suit c == suit (Seq.index played 0)
     in
     on_lead || matchesLead card || F.all (not . matchesLead) hand
 
 {--| Computes the index of the card that won the trick (maybe trump)
  - Note that this is relative to the first player in the trick
  - --}
-trickWinner :: Trick -> Maybe Suit -> Int
+trickWinner :: Card c => Seq c -> Maybe Suit -> Int
 trickWinner played trump =
-    let lead_suit = _suit $ Seq.index played 0
+    let lead_suit = suit $ Seq.index played 0
         (winner, _best_card_val) = F.maximumBy (compare `on` snd) $ flip Seq.mapWithIndex played $ (. (cardVal lead_suit trump)) . (,)
     in
     winner
-    where cardVal lead maybeTrump (Card s1 r1)
-             = r1 + (if s1==lead then 15 else 0)
-                + (if Just s1 == maybeTrump then 50 else 0)
+    where cardVal lead maybeTrump c
+             = let s = suit c
+                   r = rank c
+                in 
+                r + (if s == lead then 15 else 0)
+                + (if Just s == maybeTrump then 50 else 0)
 
-orderPile :: Pile -> OrdPile
-orderPile pile = Seq.fromList $ Set.toList pile
-unorderPile :: OrdPile -> Pile
-unorderPile pile = Set.fromList $ F.toList pile
-{--| Randomly draw n cards from pile (until pile is empty), return the drawn stack and the reduced pile --}
-draw :: Int -> Pile -> (Pile, Pile)
-draw _n _deck = undefined
---    if n <= length deck
---    then Just $ Seq.splitAt n deck
---    else Nothing
+matches :: Card c => Int -> Suit -> c -> Bool
+matches r s c = (suit c == s) && (rank c == r)
+
+--  {--| Randomly draw n cards from pile (until pile is empty), return the drawn stack and the reduced pile --}
+--  draw :: Int -> Pile -> (Pile, Pile)
+--  draw _n _deck = undefined
+--  --    if n <= length deck
+--  --    then Just $ Seq.splitAt n deck
+--  --    else Nothing
 
 {--| Draw precisely n cards from pile and return the drawn stack and the reduced pile or fail with Nothing --}
-drawExactly :: Int -> OrdPile -> Maybe (OrdPile, OrdPile)
+drawExactly :: Card c => Int -> Seq c -> Maybe (Seq c, Seq c)
 drawExactly n deck =
     if n <= Seq.length deck
     then Just $ Seq.splitAt n deck
     else Nothing
 
 -- switch at some point to using RVars
-shuffledDeck :: IO [Card]
+shuffledDeck :: IO [TestCard]
 shuffledDeck = shuffle stdDeck
 
-stdDeck :: [Card]
+stdDeck :: [TestCard]
 ---- setting aces at 14
-stdDeck = [Card s r | r <- [2..14], s <- [Clubs, Hearts, Spades, Diamonds]]
+stdDeck = [TCard s r | r <- [2..14], s <- [Clubs, Hearts, Spades, Diamonds]]
 
 shuffle :: [a] -> IO [a]
 -- shuffle x = return x
