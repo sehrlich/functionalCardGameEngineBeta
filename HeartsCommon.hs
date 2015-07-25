@@ -101,7 +101,7 @@ computeWinner (TrickInfo started played scores broken) =
 shuffledDeck :: IO [Card] -- should take in idsupply
 shuffledDeck = do
     cards <- P.shuffledDeck
-    ids <- return $ [1..] -- FIXME should be drawn from idsupply
+    ids <- return $ [100,102..] -- FIXME should be drawn from idsupply
     return $ zipWith makeCard ids cards
         where makeCard i c = Card (P.suit c) (P.rank c) i
 

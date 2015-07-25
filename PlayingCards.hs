@@ -28,25 +28,16 @@ import qualified Data.Sequence as Seq
 import Data.Sequence (Seq)
 import Data.Set (Set)
 
-{- TODO:
- - we want to make HCards be playing cards with ID
- - 
- - In an OO framework, the natural thing to do would be to make HCard a subtype of Card
- - But we don't do that
- - Instead we'll make Card a typeclass (along with a default instantiation for testing)
- - and update all our functions appropriately
- - 
- - Then HCard is just a new type of this typeclass, and everything will automatically work
- -
- -
- -}
-
 -- one line of thinking is that Card should have Show and Eq with default implementations based off suit and rank. Instead, we're just going to add prettyprint to card (with no colors)
 class (Show c) => PlayingCard c where
    suit   :: c -> Suit
    rank   :: c -> Int
    pretty :: c -> String
    pretty c =  ("-A23456789TJQKA"!!(rank c)) : (head . show $ suit c) : ""
+
+-- maybe this should be an equality for playing cards?
+matches :: PlayingCard c => Int -> Suit -> c -> Bool
+matches r s c = (suit c == s) && (rank c == r)
 
 data Suit = Clubs | Hearts | Spades | Diamonds deriving (Eq, Show, Ord)
 data TestCard = TCard {_suit::Suit, _rank::Int} deriving (Eq, Ord) -- maybe later (Generic, Typeable) --Show
@@ -147,9 +138,6 @@ trickWinner played trump =
                 in 
                 r + (if s == lead then 15 else 0)
                 + (if Just s == maybeTrump then 50 else 0)
-
-matches :: PlayingCard c => Int -> Suit -> c -> Bool
-matches r s c = (suit c == s) && (rank c == r)
 
 --  {--| Randomly draw n cards from pile (until pile is empty), return the drawn stack and the reduced pile --}
 --  draw :: Int -> Pile -> (Pile, Pile)
