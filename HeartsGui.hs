@@ -70,6 +70,7 @@ data RenderWorld = RenderGame
 
 _addDebug :: String -> GuiWorld -> GuiWorld
 _addDebug s w = w{ _renderWorld = (_renderWorld w){_dbgInfo = s:(_dbgInfo $ _renderWorld $ w)}}
+
 {- Zones are data structures to handle and organize objects on the screen
  - they should support the following operations
  - query if objectid is handled by zone
@@ -220,33 +221,39 @@ commHandle inbox outbox _t world
     = do
     -- check inbox
     message <- atomically $ tryTakeTMVar inbox
-    let (toSend, renderWorld) = handleOutMessage_ (_renderWorld world) message
-        world' = world{_renderWorld = renderWorld}
+    let (toSend, world') = handleOutMessage_ world message
     case toSend of
         Nothing -> return ()
         Just outMessage -> do atomically $ putTMVar outbox $ outMessage
     return $ maybe world' (handleInMessage_ world') message
 
-handleOutMessage_ :: RenderWorld -> Maybe ServerToClient -> (Maybe ClientToServer, RenderWorld)
+handleOutMessage_ :: GuiWorld -> Maybe ServerToClient -> (Maybe ClientToServer, GuiWorld)
 handleOutMessage_ world m =
     case m of
-    Just (StcGameStart i) -> (Just CtsAcknowledge, world{_position = i})
+    Just (StcGameStart i) -> (Just CtsAcknowledge, world{_renderWorld = (_renderWorld world){_position = i}})
     Just StcGameOver      -> acknowledge
     Just (StcRender _)    -> acknowledge
     _ ->
-        case (_guiState world) of
+        case (_guiState $ _renderWorld world) of
         DisplayOnly -> (Nothing, world)
         SelectCardToPlay _ _ Nothing -> (Nothing, world)
         SelectCardToPlay _ _ (Just c) ->
             ( Just $ CtsMove c
-            , world { _guiState = DisplayOnly
+            , unregisterId (_id c) $
+                world 
+                    { _renderWorld = (_renderWorld world){_guiState = DisplayOnly}
                     -- , _dbgInfo = "sent move ":(_dbgInfo world)
                     }
             )
         SelectCardsToPass passSet
+            -- AS A TEMPORARY HACK we are unregistering upon sending this information, as it is the last place we know we know it.
             | Z.size passSet == 3 ->
+                let --- idlist = map _id $ Z.elems passSet -- ids of cards we pass
+                    newWorld = Z.foldr (unregisterId . _id) world passSet
+                in
                 ( Just $ CtsPassSelection passSet
-                , world { _guiState = DisplayOnly
+                , newWorld 
+                        { _renderWorld = (_renderWorld world){_guiState = DisplayOnly}
                         -- , _dbgInfo = "passed cards ":(_dbgInfo world)
                         }
                 )
@@ -275,7 +282,7 @@ register rinfo@(Passing hand _passdir) world =
 register rinfo@(RenderInRound hand trick _scores) w =
     flip (S.foldrWithIndex rgstr') trick $
         S.foldrWithIndex rgstr world (orderPile hand)
-    where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Swit----  ch to HandArea
+    where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
           rgstr' i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), 200  ) -- Switch to PlayArea
           world = w { _renderWorld = (_renderWorld w){_receivedInfo = rinfo}
                     -- , _markIIworld = baseWorld
@@ -308,37 +315,44 @@ registerGeneric idNo mLoc mSpr mZon mTar world
         }
     }
 
+unregisterId :: Int -> GuiWorld -> GuiWorld
+unregisterId i world
+    =
+    let mIIw = _markIIworld world
+    in
+    world
+        { _markIIworld = mIIw
+            { clickables  = IntMap.delete i (clickables  mIIw)
+            , sprites     = IntMap.delete i (sprites     mIIw)
+            , targets     = IntMap.delete i (targets     mIIw)
+            , locations   = IntMap.delete i (locations   mIIw)
+            , gameObjects = IntMap.delete i (gameObjects mIIw)
+            }
+        }
+
 {- Generic Gui elements -}
 registerCard :: Zone -> Card -> GuiWorld -> GuiWorld
 registerCard pos card world
     =
     let mIIw = _markIIworld world
-        ---(cid, newSup) = freshId $ _idSupply world
         cid = _id card
         c = Clickable cid $ clickCard cid card
-        t = Target   $ dropCard card
         s = Sprite   $ renderCard card
         l = Location pos (80,60)
     in
     world
         { _markIIworld = mIIw
             { clickables  = IntMap.insert cid c    (clickables  mIIw)
-            , targets     = IntMap.insert cid t    (targets     mIIw) 
             , sprites     = IntMap.insert cid s    (sprites     mIIw)
             , locations   = IntMap.insert cid l    (locations   mIIw)
             , gameObjects = IntMap.insert cid card (gameObjects mIIw)
             }
-        -- , _idSupply = newSup
         }
     where clickCard cid _crd w =
             return $ w{ _markIIworld =
                         (_markIIworld w){ dragged = Just cid }
                       -- , _dbgInfo = ((show crd):(_dbgInfo w))
                       }
-          dropCard _crd w =
-            return w
-            {-return $ w{ _dbgInfo = (("releasing around area of " ++show crd):(_dbgInfo w))
-                      }-}
 
 {-registerButton :: Location -> Sprite -> ClickProcess -> GuiWorld -> GuiWorld-}
 {--- registerButton = undefined -- needs to actually register button-}
@@ -424,8 +438,8 @@ initWorld =
     -- The PlayArea
         (Just $ Location (ExactPos (0,0)) (400,300))
         (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
-        {--| No particular action happens upon clicking in window --}
-        (Just $ Clickable 0 (\world -> return world))
+        {--| No particular action happens upon clicking in play area --}
+        (Just $ Clickable 0 return)
         {--| If a card is being dragged, we try to play it as appropriate --}
         (Just $ Target playAreaHandleRelease)
     )
@@ -435,9 +449,19 @@ initWorld =
         (Just $ Location (ExactPos (0,0)) (800,600))
         (Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)))
         {--| No particular action happens upon clicking in window --}
-        (Just $ Clickable 0 (\world -> return world) )
+        (Just $ Clickable 0 return)
         {--| If a card is being dragged, it snaps back to zone --}
-        (Just $ Target gameWindleHandleRelease)
+        (Just $ Target gameWindowHandleRelease)
+    )
+    .
+    (registerGenericSetID
+    -- The Hand
+        (Just $ Location (ExactPos (0,-200)) (800,100))
+        (Just $ Sprite (Color (makeColor 0.4 0.7 0.2 0.5) $ rectangleSolid (800) (100)))
+        {--| No particular action happens upon clicking in window --}
+        (Just $ Clickable 0 return)
+        {--| If a card is being dragged, we try to play it as appropriate --}
+        (Just $ Target return)
     )
 
 playAreaHandleRelease :: ClickProcess
@@ -489,8 +513,8 @@ playAreaHandleRelease world =
             (Just _, SelectCardToPlay _ _ (Just _))  ->
                     world{ _renderWorld = renW{_dbgInfo = "Already selected card to play":(_dbgInfo renW)}}
 
-gameWindleHandleRelease :: ClickProcess
-gameWindleHandleRelease world
+gameWindowHandleRelease :: ClickProcess
+gameWindowHandleRelease world
     = 
     return $ case dragged (_markIIworld world) of
         Nothing       -> world
