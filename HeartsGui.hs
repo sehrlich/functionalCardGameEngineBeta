@@ -53,7 +53,7 @@ import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 -- List of objects/zones
 -- Need some Gui Info such as cursor position
 data GuiWorld = GuiWorld
-                { _miscState  :: RenderWorld
+                { _miscState  :: MiscState
                 , _markIIworld  :: MarkIIRender
                 , _messages     :: MessageHandler
                 -- , _miscState    :: MiscState
@@ -62,7 +62,7 @@ data GuiWorld = GuiWorld
                 -- somewhere needs access to mouse position
 -- TODO fix this, maybe with lenses, maybe just with a principled reorganization of guiworld and constituents
 
-data RenderWorld = RenderGame
+data MiscState = MiscState
                 { _receivedInfo :: RenderInfo
                 , _dbgInfo      :: DebugInfo
                 , _position     :: Int          -- Player position
@@ -162,7 +162,7 @@ data Directive  = Exiting
                 deriving (Show)
 
 makeLenses ''GuiWorld
-makeLenses ''RenderWorld
+makeLenses ''MiscState
 makeLenses ''MarkIIRender
 makeLenses ''MessageHandler
 
@@ -507,4 +507,4 @@ gameWindowHandleRelease :: ClickProcess
 gameWindowHandleRelease world = return $ world & markIIworld . dragged .~ Nothing
  
 emptyWorld :: Int -> MessageHandler -> Supply -> GuiWorld
-emptyWorld pos mess sup = (GuiWorld (RenderGame RenderEmpty ["Initializing"] pos (0,0)) emptyRender mess sup)  -- world
+emptyWorld pos mess sup = (GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0)) emptyRender mess sup)  -- world
