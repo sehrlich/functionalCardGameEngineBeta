@@ -54,6 +54,7 @@ data GuiWorld = GuiWorld
                 { _renderWorld  :: RenderWorld
                 , _markIIworld  :: MarkIIRender
                 , _messages     :: MessageHandler
+                -- , _miscState    :: MiscState
                 , _idSupply     :: Supply
                 }
                 -- somewhere needs access to mouse position
@@ -61,14 +62,19 @@ data GuiWorld = GuiWorld
 
 data RenderWorld = RenderGame
                 { _receivedInfo :: RenderInfo
-                , _guiState     :: GuiState
                 , _dbgInfo      :: DebugInfo
                 , _position     :: Int          -- Player position
                 , _mouseCoords  :: Pos
                 -- _animation  --- collect drag and server generated animations
-                -- consider moving inbox and outbox here
                 -- may also need a place to register current effect seeking target
                 }
+
+{-data MiscState = MiscState 
+                -- move message handler into here?
+                {
+                , _mouseCoords  :: Pos
+                }
+-}
 
 _addDebug :: String -> GuiWorld -> GuiWorld
 _addDebug s w = w{ _renderWorld = (_renderWorld w){_dbgInfo = s:(_dbgInfo $ _renderWorld $ w)}}
@@ -145,20 +151,17 @@ type DebugInfo = [String]
 
 data MessageHandler = MessageHandler
                     { _outbox  :: Maybe ClientToServer
-                    , _current :: Directive -- this is the next step of GuiState
+                    , _current :: Directive 
                     }
 
--- This should get changed -- see Directive
 data Directive  = Exiting
                 | Initializing
                 | CollectPass Hand
                 | PassNow Hand
-                | SelectCard
+                | SelectCard Hand Info
                 | SendCard Card
                 | Waiting
-data GuiState   = DisplayOnly
-                | SelectCardsToPass Hand
-                | SelectCardToPlay Hand Info (Maybe Card)
+                deriving (Show)
 
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> Int -> IO ()
 guiThread inbox outbox pos
@@ -187,14 +190,7 @@ eventHandle event world
     in case event of
     EventResize _ws -> return $ world
     EventMotion (mx,my)
-        -> let world' = world { _renderWorld = renW{_mouseCoords = (mx, my)} }
-            in
-            case dragged (_markIIworld world) of
-            Nothing -> return world'
-            Just i  -> return $ world'
-                                    { _markIIworld = mIIw{dragged = Just i}
-                                    -- , _dbgInfo = (show (mx,my) ):_dbgInfo
-                                    }
+        -> return $ world { _renderWorld = renW{_mouseCoords = (mx, my)} }
     EventKey k ks _mod mpos
         -> case (k, ks) of
             (MouseButton _, Down)
@@ -262,22 +258,19 @@ processMessage m world =
     Just StcGameOver -> 
         acknowledged { _messages = _mess { _current = Exiting } }
     Just (StcGetPassSelection _ _) -> 
-        world'  { _renderWorld = _rw {_guiState = SelectCardsToPass Z.empty}
-                , _messages = _mess {_current = CollectPass Z.empty}
+        world'  { _messages = _mess {_current = CollectPass Z.empty}
                 }
     Just (StcWasPassed _) -> 
         acknowledged
     Just (StcGetMove hand info) -> 
-        world'  { _renderWorld = _rw {_guiState = SelectCardToPlay hand info Nothing} 
-                , _messages = _mess {_current = SelectCard }
+        world'  { _messages = _mess {_current = SelectCard hand info }
                 }
     Just (StcRender rinfo ) -> registerWorld rinfo acknowledged 
     Just StcCleanTrick -> acknowledged -- also unregistering shit?
     Nothing ->
         case d of
         SendCard c   -> unregisterId (_id c) $
-            world'{ _renderWorld = _rw  { _guiState = DisplayOnly}
-                  , _messages = _mess   { _current = Waiting 
+            world'{ _messages = _mess   { _current = Waiting 
                                         , _outbox  = Just $ CtsMove c
                                         }
                   }
@@ -286,8 +279,7 @@ processMessage m world =
             let newWorld = Z.foldr (unregisterId . _id) world' cs
             in
             newWorld 
-                { _renderWorld = _rw {_guiState = DisplayOnly}
-                , _messages = _mess { _current = Waiting 
+                { _messages = _mess { _current = Waiting 
                                     , _outbox = Just $ CtsPassSelection cs
                                     }
                 }
@@ -296,7 +288,7 @@ processMessage m world =
 
         -- don't need to do anything for waiting, selectcard, collectpass
         Waiting         -> world'
-        SelectCard      -> world'
+        SelectCard _ _  -> world'
         CollectPass _cs -> world' -- temporary check to see if 3 cards then switch
 
 
@@ -495,16 +487,17 @@ initWorld =
     )
 
 playAreaHandleRelease :: ClickProcess
-playAreaHandleRelease world = 
+playAreaHandleRelease world = return $ maybe id processCardRelease (dragged $ _markIIworld world) $ world
+
+
+processCardRelease :: Int -> GuiWorld -> GuiWorld
+processCardRelease i world =
     let mIIw = _markIIworld world
         renW = _renderWorld world
         mess = _messages    world
     in
-    return $
-        case (dragged mIIw, _guiState renW) of
-            (Nothing, _)       -> world
-            (_, DisplayOnly)   -> world
-            (Just i, SelectCardsToPass soFar) ->
+        case (_current mess) of
+            CollectPass soFar ->
                 let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
                     (mx,my) = _mouseCoords renW
                 in
@@ -513,7 +506,6 @@ playAreaHandleRelease world =
                 then world  
                     { _renderWorld
                     = renW  { _dbgInfo = "passing this card ":(_dbgInfo renW)
-                            , _guiState = SelectCardsToPass (Z.insert card soFar)
                             }
                     , _markIIworld
                     = mIIw  { dragged = Nothing
@@ -527,11 +519,10 @@ playAreaHandleRelease world =
                                 then PassNow newSet
                                 else CollectPass newSet
                             }
-                    -- TODO FIXME add test here to switch to PassNow when size is 3
-                    -- or implement button for the switch
+                    -- TODO FIXME implement button for the switch
                     }
                 else _addDebug  "cannot add card to passing set " world
-            (Just i, SelectCardToPlay hand info Nothing)  ->
+            SelectCard hand info  ->
                 -- let card = (IntMap.! (gameObjects mIIw) i)
                 let card = fromJust (IntMap.lookup i (gameObjects mIIw) )
                     (mx,my) = _mouseCoords renW
@@ -543,33 +534,27 @@ playAreaHandleRelease world =
                                 , locations = IntMap.insert i (Location (ExactPos (mx,my)) (80,60)) (locations mIIw)
                                 -- may need to be altering old zone
                                 }
-                        , _renderWorld
-                        = renW  { _guiState = SelectCardToPlay hand info $ Just card
-                                }
-                        -- , _dbgInfo = "Dropping in play area":(_dbgInfo world)
                         , _messages 
                         = mess  { _current = SendCard card }
                         }
                 else world{ _renderWorld = renW{_dbgInfo = "Not valid play ":(_dbgInfo renW)}}
-            (Just _, SelectCardToPlay _ _ (Just _))  ->
-                    world{ _renderWorld = renW{_dbgInfo = "Already selected card to play":(_dbgInfo renW)}}
+            Waiting -> world
+            s -> error $ "dragging id " ++ (show i) ++ " while in state " ++ show s
 
 gameWindowHandleRelease :: ClickProcess
 gameWindowHandleRelease world
     = 
     return $ case dragged (_markIIworld world) of
         Nothing       -> world
-        -- Just (i,mx,my)  ->
         Just _  ->
             let mIIw = _markIIworld world
             in
             world
                 { _markIIworld
                 = mIIw  { dragged = Nothing
-                        -- , locations = IntMap.insert i (Location (mx,my) (80,60)) (locations mIIw)
                         }
                 -- , _dbgInfo = "Released in window, dropping back to init pos":(_dbgInfo world)
                 }
  
 emptyWorld :: Int -> MessageHandler -> Supply -> GuiWorld
-emptyWorld pos mess sup = (GuiWorld (RenderGame RenderEmpty DisplayOnly ["Initializing"] pos (0,0)) emptyRender mess sup)  -- world
+emptyWorld pos mess sup = (GuiWorld (RenderGame RenderEmpty ["Initializing"] pos (0,0)) emptyRender mess sup)  -- world
