@@ -6,7 +6,7 @@ module HeartsGui
 import HeartsCommon
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
--- import qualified Data.Foldable as F
+import qualified Data.Foldable as F
 -- import Control.Concurrent.Async
 import Control.Concurrent.STM
 -- import Control.Concurrent.STM.TMVar
@@ -258,15 +258,13 @@ processMessage m world =
     Just StcGameOver -> 
         acknowledged { _messages = _mess { _current = Exiting } }
     Just (StcGetPassSelection _ _) -> 
-        world'  { _messages = _mess {_current = CollectPass Z.empty}
-                }
+        world'  { _messages = _mess {_current = CollectPass Z.empty} }
     Just (StcWasPassed _) -> 
         acknowledged
     Just (StcGetMove hand info) -> 
-        world'  { _messages = _mess {_current = SelectCard hand info }
-                }
+        world'  { _messages = _mess {_current = SelectCard hand info } }
     Just (StcRender rinfo ) -> registerWorld rinfo acknowledged 
-    Just StcCleanTrick -> acknowledged -- also unregistering shit?
+    Just StcCleanTrick -> unregisterTrick acknowledged -- also unregistering shit?
     Nothing ->
         case d of
         SendCard c   -> unregisterId (_id c) $
@@ -296,23 +294,26 @@ processMessage m world =
  -}
 registerWorld :: RenderInfo -> GuiWorld -> GuiWorld
 registerWorld rinfo@(Passing hand _passdir) world =
-    S.foldrWithIndex rgstr
-        (world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}})
-        (orderPile hand)
-    where rgstr i = registerCard $ ExactPos (-351+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
+    registerHand hand (world{ _renderWorld = (_renderWorld world){_receivedInfo = rinfo}})
+
 -- will need to register hand after cards have passed
 registerWorld rinfo@(RenderInRound hand trick _scores) w =
-    flip (S.foldrWithIndex rgstr') trick $
-        S.foldrWithIndex rgstr world (orderPile hand)
-    where rgstr  i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
-          rgstr' i = registerCard $ ExactPos (-350+ 55*(fromIntegral i), 200  ) -- Switch to PlayArea
-          world = w { _renderWorld = (_renderWorld w){_receivedInfo = rinfo}
-                    -- , _markIIworld = baseWorld
-                    }
+    registerTrick trick $ registerHand hand world
+    where world = w { _renderWorld = (_renderWorld w){_receivedInfo = rinfo} }
 registerWorld (RenderServerState _ _) w = w
 registerWorld (BetweenRounds _) w = w{ _markIIworld = emptyRender}
 registerWorld (Canonical _ _ _) w = w
 registerWorld (RenderEmpty) w = w{ _markIIworld = emptyRender}
+
+registerHand :: Hand -> GuiWorld -> GuiWorld
+registerHand hand world =
+    S.foldrWithIndex rgstr world (orderPile hand)
+    where rgstr i = registerCard $ ExactPos (-351+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
+
+registerTrick :: Trick -> GuiWorld -> GuiWorld
+registerTrick trick world =
+    S.foldrWithIndex rgstr world trick
+    where rgstr i = registerCard $ ExactPos (-351+ 55*(fromIntegral i), 200 ) -- Switch to HandArea
 
 {- Generic Gui elements -}
 registerGenericSetID :: Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
@@ -336,6 +337,13 @@ registerGeneric idNo mLoc mSpr mZon mTar world
         -- will probably want id->names for debug log
         }
     }
+
+unregisterTrick :: GuiWorld -> GuiWorld
+unregisterTrick world =
+    case _receivedInfo $ _renderWorld world of 
+        RenderInRound _hand trick _scores -> F.foldr (unregisterId . _id) world trick         
+        _ -> error $ "Called unregisterTrick while not inRound"
+    
 
 unregisterId :: Int -> GuiWorld -> GuiWorld
 unregisterId i world
