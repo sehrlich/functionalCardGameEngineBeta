@@ -38,25 +38,28 @@ main = do
         void $ gameLoop [p0,p1,p2,p3] StartGame
 
 msgClient :: Player -> ServerToClient -> IO ClientToServer
-msgClient (inbox, outbox, _, _) message
-    = do
-    atomically $ putTMVar inbox message
-    atomically $ takeTMVar outbox
+msgClient player message
+    = msgClientInternal player (const message)
 
 msgClientInternal :: Player -> (Int -> ServerToClient) -> IO ClientToServer
 msgClientInternal (inbox, outbox, _, forPos) message
     = do
+    print $ "server sent " ++ (show forPos) ++ ": " ++ (show $ message forPos)
     atomically $ putTMVar inbox (message forPos)
-    atomically $ takeTMVar outbox
+    gotBack <- atomically $ takeTMVar outbox
+    print $ "recieved from " ++ (show forPos) ++ ": " ++ (show gotBack)
+    return gotBack
 
 broadcastInternal :: [Player] -> (Int -> ServerToClient) -> IO [ClientToServer]
 broadcastInternal players message
     = Async.mapConcurrently (flip msgClientInternal message) players
 
+{--| For use when everyone gets the same message --}
 broadcast_ :: [Player] -> ServerToClient -> IO ()
 broadcast_ players message
     = broadcastInternal players (const message) >> return ()
 
+{--| For use when players get tailored messages --}
 broadcast_' :: [Player] -> (Int -> ServerToClient) -> IO ()
 broadcast_' players message
     = broadcastInternal players (message) >> return ()
@@ -112,18 +115,18 @@ gameLoop players (PassingPhase deal passDir)
         if passDir == NoPass then return deal else
         let getValidatedSelection i
                 = do
-                 candCardSet <- msgClient (players!!i) (StcGetPassSelection (deal `S.index` i) passDir)
-                 validate candCardSet
+                candCardSet <- msgClient (players!!i) (StcGetPassSelection (deal `S.index` i) passDir)
+                validate candCardSet
                 -- validate $ client (StcGetPassSelection (deal `S.index` i) passDir)
             validate (CtsPassSelection toPass) = return toPass
             -- TODO would prefer this to be non-stupid
-            validate _ = error "need to make this try-catch or somesuch"
+            validate e = error $ "need to make this try-catch or somesuch: " ++ show e
             rotate (x :< xs) =  xs |> x
             rotate (Empty) =  S.empty
             rotate _ = error "this is not a sequence"
         in do
         broadcast_ players (StcRender $ Passing (deal `S.index` 0) passDir)
-        -- TODO make this a broadcast (i.e. similar to broadcast internal)
+        -- TODO make getValidatedSelection a thing that can be broadcast (i.e. similar to broadcast internal)
         s0 <- getValidatedSelection 0
         s1 <- getValidatedSelection 1
         s2 <- getValidatedSelection 2
@@ -162,6 +165,8 @@ gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores 
                     then InRound board (NewTrick:on_stack) nextTrick
                     else RoundOver s
             in
+            do
+            broadcast_ players StcCleanTrick
             gameLoop players nextStep
         GetInput -> do
             let hand = board `S.index` curPlayer info
@@ -169,7 +174,7 @@ gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores 
             let player_input = validate move
             gameLoop players $ InRound board (player_input:on_stack) info
             where validate (CtsMove move) = Effect (play move)
-                  validate _ = error "recieved wrong type of message"
+                  validate e = error $ "recieved from " ++ (show $ curPlayer info) ++ " wrong type of message: " ++ show e
         Effect move ->
             gameLoop players $ move world'
 

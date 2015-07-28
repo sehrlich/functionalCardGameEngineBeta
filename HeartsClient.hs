@@ -69,10 +69,12 @@ aiclient (StcGetMove hand info@(TrickInfo player trick scores heartsbroken)) = d
         Just card -> return $ CtsMove card
 
 aiclient (StcGetPassSelection hand _passDir) = do
-    threadDelay 500000 -- sleep 0.5 second
+    threadDelay 50000 -- sleep 0.05 second
     let cardSet = Z.fromList $ take 3 $ Z.toList hand
     return $ CtsPassSelection cardSet
+aiclient (StcWasPassed _)= return CtsAcknowledge
 
 aiclient (StcGameStart _ ) = return CtsAcknowledge
 aiclient (StcRender _rinfo) = return CtsAcknowledge
+aiclient StcCleanTrick = return CtsAcknowledge
 aiclient StcGameOver = return CtsDisconnect

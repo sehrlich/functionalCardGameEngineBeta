@@ -54,7 +54,7 @@ data Info =
     , playedSoFar     :: Trick
     , pointsCollected :: Scores
     , heartsBroken    :: Bool
-    }
+    } deriving (Show)
 
 data World = InRound Board Stack Info
             | StartGame
@@ -129,15 +129,19 @@ isValidPlay hand info card =
 
 -- data Message = ClientToServer | ServerToClient
 data ClientToServer = CtsMove Card
-                    | CtsPassSelection (Set Card)
+                    | CtsPassSelection (Set Card) -- same type as hand 
                     | CtsDisconnect
                     | CtsAcknowledge
+                    deriving (Show)
 
 data ServerToClient = StcGetMove Hand Info
                     | StcGetPassSelection Hand PassDir
+                    | StcWasPassed (Set Card)
                     | StcGameStart Int
                     | StcGameOver
                     | StcRender RenderInfo
+                    | StcCleanTrick
+                    deriving (Show)
 
 data RenderInfo = RenderServerState Board Info
                 | Passing HeartsCommon.Hand PassDir
@@ -145,7 +149,9 @@ data RenderInfo = RenderServerState Board Info
                 | RenderInRound HeartsCommon.Hand HeartsCommon.Trick Scores
                 | RenderEmpty
                 | Canonical Mode [Card] [String]
+                deriving (Show)
 
 -- rename eventually to rendermode after figuring out name conflicts
 -- eventually mode will store passing/betweenrounds/renderinround/etc
 data Mode = ObjectList
+                deriving (Show)

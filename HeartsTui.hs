@@ -18,8 +18,7 @@ clientTextBased (StcRender rinfo) = do
     renderText rinfo
     return CtsAcknowledge
 
-clientTextBased (StcGameStart _) = do
-    return CtsAcknowledge
+clientTextBased (StcGameStart _) = return CtsAcknowledge
 
 clientTextBased (StcGetMove hand info) = do
     card <- getMove hand info
@@ -30,7 +29,9 @@ clientTextBased (StcGetPassSelection hand _passDir) = do
    cardSet <- getMultiCards 3 hand
    -- do client validation here
    return $ CtsPassSelection cardSet
+clientTextBased (StcWasPassed _) = return CtsAcknowledge
 
+clientTextBased StcCleanTrick = return CtsAcknowledge
 clientTextBased StcGameOver = return CtsDisconnect
 
 getMove :: Hand -> Info -> IO Card
