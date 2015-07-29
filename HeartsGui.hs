@@ -54,7 +54,7 @@ import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 -- Need some Gui Info such as cursor position
 data GuiWorld = GuiWorld
                 { _miscState  :: MiscState
-                , _markIIworld  :: MarkIIRender
+                , _objectStore  :: ObjectStore
                 , _idSupply     :: Supply
                 }
                 -- somewhere needs access to mouse position
@@ -88,7 +88,7 @@ class HZone z where
     allMems :: z -> [i] -- returns allMems
 
 data Zone          = PlayArea Pos | ExactPos Pos
-                    -- HandArea Pos |
+                    -- | HandArea Pos
                     ---  Zone ManagementStyle Intmap Pos
 instance HZone Zone where
     extractPos z _i = case z of
@@ -125,7 +125,7 @@ data Target        = Target
 -- type RenderProcess = IO Picture
 type ClickProcess  = GuiWorld -> IO GuiWorld
 
-data MarkIIRender = MarkIIRender
+data ObjectStore = ObjectStore
     -- component entity like system
     { _clickables  :: IntMap Clickable
     , _targets     :: IntMap Target
@@ -152,7 +152,7 @@ data Directive  = Exiting
 
 makeLenses ''GuiWorld
 makeLenses ''MiscState
-makeLenses ''MarkIIRender
+makeLenses ''ObjectStore
 
 _addDebug :: String -> GuiWorld -> GuiWorld
 _addDebug s w = w & miscState . dbgInfo %~ (s:)
@@ -190,9 +190,9 @@ eventHandle event world
                 ->
                 -- register the click with an object (clickable)
                 let (_d, action) = IntMap.foldr cmpDepth (-1, return)
-                                    $ IntMap.intersection (world ^. markIIworld . clickables)
+                                    $ IntMap.intersection (world ^. objectStore . clickables)
                                     $ IntMap.filter (isInRegion mpos)
-                                    $ world ^. markIIworld . locations
+                                    $ world ^. objectStore . locations
                     cmpDepth z (d, a) = let d' = depth z in if d' > d then (d', clickProcess z) else (d, a)
                 -- select the object with highest depth, and run its on click
                 in action world 
@@ -201,9 +201,9 @@ eventHandle event world
                 let shouldGoOff = reverse
                         $ map releaseProcess
                         $ IntMap.elems
-                        $ IntMap.intersection (world ^. markIIworld . targets)
+                        $ IntMap.intersection (world ^. objectStore . targets)
                         $ IntMap.filter (isInRegion mpos)
-                        $ world ^. markIIworld . locations
+                        $ world ^. objectStore . locations
                 -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
                 -- if only in generic background target, have sensible move back animation
                 -- give this the proper name rather than blah
@@ -277,9 +277,9 @@ registerWorld rinfo@(RenderInRound hand trick _scores) world =
     registerTrick trick $ registerHand hand $ world & miscState . receivedInfo .~ rinfo
 
 registerWorld (RenderServerState _ _) w = w
-registerWorld (BetweenRounds _) w = w & markIIworld .~ emptyRender 
+registerWorld (BetweenRounds _) w = w & objectStore .~ emptyRender 
 registerWorld (Canonical _ _ _) w = w
-registerWorld (RenderEmpty) w = w & markIIworld .~ emptyRender 
+registerWorld (RenderEmpty) w = w & objectStore .~ emptyRender 
 
 registerHand :: Hand -> GuiWorld -> GuiWorld
 registerHand hand world =
@@ -302,10 +302,10 @@ registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> M
 registerGeneric idNo mLoc mSpr mZon mTar world
     =
     world
-    & markIIworld . clickables %~ IntMap.alter (const mZon) idNo
-    & markIIworld . targets    %~ IntMap.alter (const mTar) idNo
-    & markIIworld . sprites    %~ IntMap.alter (const mSpr) idNo
-    & markIIworld . locations  %~ IntMap.alter (const mLoc) idNo
+    & objectStore . clickables %~ IntMap.alter (const mZon) idNo
+    & objectStore . targets    %~ IntMap.alter (const mTar) idNo
+    & objectStore . sprites    %~ IntMap.alter (const mSpr) idNo
+    & objectStore . locations  %~ IntMap.alter (const mLoc) idNo
 
 unregisterTrick :: GuiWorld -> GuiWorld
 unregisterTrick world =
@@ -319,11 +319,11 @@ unregisterId i world
     =
     -- should use a fold or traverse or some other clever lens thing
     world
-    & markIIworld . clickables  %~ IntMap.delete i
-    & markIIworld . targets     %~ IntMap.delete i
-    & markIIworld . sprites     %~ IntMap.delete i
-    & markIIworld . locations   %~ IntMap.delete i
-    & markIIworld . gameObjects %~ IntMap.delete i
+    & objectStore . clickables  %~ IntMap.delete i
+    & objectStore . targets     %~ IntMap.delete i
+    & objectStore . sprites     %~ IntMap.delete i
+    & objectStore . locations   %~ IntMap.delete i
+    & objectStore . gameObjects %~ IntMap.delete i
 
 {- Generic Gui elements -}
 registerCard :: Zone -> Card -> GuiWorld -> GuiWorld
@@ -331,16 +331,16 @@ registerCard pos card world
     =
     let 
         cid = _id card
-        c   = Clickable cid $ return . (set (markIIworld . dragged) (Just cid))
+        c   = Clickable cid $ return . (set (objectStore . dragged) (Just cid))
         s   = Sprite        $ renderCard card
         l   = Location  pos (80,60)
     in
     -- can I use better lens magic for this?
     world
-    & markIIworld . clickables  %~ IntMap.insert cid c
-    & markIIworld . sprites     %~ IntMap.insert cid s
-    & markIIworld . locations   %~ IntMap.insert cid l
-    & markIIworld . gameObjects %~ IntMap.insert cid card
+    & objectStore . clickables  %~ IntMap.insert cid c
+    & objectStore . sprites     %~ IntMap.insert cid s
+    & objectStore . locations   %~ IntMap.insert cid l
+    & objectStore . gameObjects %~ IntMap.insert cid card
 
 {-registerButton :: Location -> Sprite -> ClickProcess -> GuiWorld -> GuiWorld-}
 {--- registerButton = undefined -- needs to actually register button-}
@@ -370,12 +370,12 @@ render world
             Pictures $ map renderSprite
             $ IntMap.elems
             $ IntMap.intersectionWith (,) 
-                (world ^. markIIworld . sprites) 
-                (world ^. markIIworld . locations) 
+                (world ^. objectStore . sprites) 
+                (world ^. objectStore . locations) 
        mpos = ExactPos $ world ^. miscState . mouseCoords
        dragging =
-            case _dragged (world ^. markIIworld) of
-                Just i -> renderSprite  ( views (markIIworld . sprites) (IntMap.! i) world
+            case _dragged (world ^. objectStore) of
+                Just i -> renderSprite  ( views (objectStore . sprites) (IntMap.! i) world
                                         , Location (mpos) (80,60) 
                                         )
                 Nothing -> Blank
@@ -406,14 +406,14 @@ renderSprite ((Sprite pic), (Location zone _bbox))
 renderCard :: Card -> Picture
 renderCard card
     = Pictures
-        [ Color magenta $ rectangleSolid ( 60)  ( 80)
-        , Color         ( greyN 0.575)   $ circleSolid 20
-        , Color black   $ Translate      ( -10) ( -5) $ Scale ( 0.125) ( 0.125) $ Text $ pretty card
-        , Color black   $ rectangleWire  ( 60)  ( 80)
+        [ Color magenta $ rectangleSolid ( 60  ) ( 80 )
+        , Color         ( greyN 0.575 )  $ circleSolid 20
+        , Color black   $ Translate      ( -10 ) ( -5 ) $ Scale ( 0.125) ( 0.125) $ Text $ pretty card
+        , Color black   $ rectangleWire  ( 60  ) ( 80 )
         ]
 
-emptyRender :: MarkIIRender
-emptyRender = MarkIIRender IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
+emptyRender :: ObjectStore
+emptyRender = ObjectStore IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
 
 -- Hearts specific
 initWorld :: GuiWorld -> GuiWorld
@@ -449,13 +449,13 @@ initWorld =
     )
 
 playAreaHandleRelease :: ClickProcess
-playAreaHandleRelease world = return $ maybe id processCardRelease (world ^. markIIworld . dragged) $ world
+playAreaHandleRelease world = return $ maybe id processCardRelease (world ^. objectStore . dragged) $ world
 
 processCardRelease :: Int -> GuiWorld -> GuiWorld
 processCardRelease i world =
         case (world ^. miscState . current) of
             CollectPass soFar ->
-                let card = views (markIIworld . gameObjects) (IntMap.! i) world
+                let card = views (objectStore . gameObjects) (IntMap.! i) world
                     (mx,my) = world ^. miscState . mouseCoords
                 in
                 if Z.size soFar < 3 && Z.notMember card soFar
@@ -470,21 +470,21 @@ processCardRelease i world =
                                 else CollectPass newSet
                             )
                     -- TODO FIXME implement button for the switch
-                    & markIIworld . locations %~ IntMap.insert i (Location (ExactPos (mx,my)) (80,60))
-                    & markIIworld . dragged   .~ Nothing
+                    & objectStore . locations %~ IntMap.insert i (Location (ExactPos (mx,my)) (80,60))
+                    & objectStore . dragged   .~ Nothing
                     & miscState   . dbgInfo   %~ ("Passing this card. ":)
                 else world 
                     & miscState   . dbgInfo   %~ ("cannot add card to passing set ":)
 
             SelectCard hand info  ->
-                let card = views (markIIworld . gameObjects) (IntMap.! i) world
+                let card = views (objectStore . gameObjects) (IntMap.! i) world
                     (mx,my) = world ^. miscState . mouseCoords
                 in
                 if isValidPlay hand info card
                 then world
                         & miscState   . current   .~ SendCard card
-                        & markIIworld . dragged   .~ Nothing
-                        & markIIworld . locations %~ IntMap.insert i (Location (ExactPos (mx,my)) (80,60))
+                        & objectStore . dragged   .~ Nothing
+                        & objectStore . locations %~ IntMap.insert i (Location (ExactPos (mx,my)) (80,60))
                 else world 
                         & miscState   . dbgInfo   %~ ("Not valid play. ":)
 
@@ -493,7 +493,7 @@ processCardRelease i world =
             s       -> error $ "dragging id " ++ (show i) ++ " while in state " ++ show s
 
 gameWindowHandleRelease :: ClickProcess
-gameWindowHandleRelease world = return $ world & markIIworld . dragged .~ Nothing
+gameWindowHandleRelease world = return $ world & objectStore . dragged .~ Nothing
  
 emptyWorld :: Int -> Supply -> GuiWorld
 emptyWorld pos sup = GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0) Nothing Initializing) emptyRender sup
