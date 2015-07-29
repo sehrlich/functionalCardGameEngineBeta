@@ -55,8 +55,6 @@ import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 data GuiWorld = GuiWorld
                 { _miscState  :: MiscState
                 , _markIIworld  :: MarkIIRender
-                , _messages     :: MessageHandler
-                -- , _miscState    :: MiscState
                 , _idSupply     :: Supply
                 }
                 -- somewhere needs access to mouse position
@@ -65,18 +63,14 @@ data GuiWorld = GuiWorld
 data MiscState = MiscState
                 { _receivedInfo :: RenderInfo
                 , _dbgInfo      :: DebugInfo
-                , _position     :: Int          -- Player position
+                , _position     :: Int       -- Player position
                 , _mouseCoords  :: Pos
+                , _toSend       :: Maybe ClientToServer
+                , _current      :: Directive
                 -- _animation  --- collect drag and server generated animations
                 -- may also need a place to register current effect seeking target
                 }
 
-{-data MiscState = MiscState 
-                -- move message handler into here?
-                {
-                , _mouseCoords  :: Pos
-                }
--}
 {- Zones are data structures to handle and organize objects on the screen
  - they should support the following operations
  - query if objectid is handled by zone
@@ -147,11 +141,6 @@ data MarkIIRender = MarkIIRender
     -- will also want a set of logical zones that arrange things inside of them e,g, hand play
 type DebugInfo = [String]
 
-data MessageHandler = MessageHandler
-                    { _toSend  :: Maybe ClientToServer
-                    , _current :: Directive 
-                    }
-
 data Directive  = Exiting
                 | Initializing
                 | CollectPass Hand
@@ -164,7 +153,6 @@ data Directive  = Exiting
 makeLenses ''GuiWorld
 makeLenses ''MiscState
 makeLenses ''MarkIIRender
-makeLenses ''MessageHandler
 
 _addDebug :: String -> GuiWorld -> GuiWorld
 _addDebug s w = w & miscState . dbgInfo %~ (s:)
@@ -178,7 +166,7 @@ guiThread inbox outbox pos
             window
             white			 -- background color
             100              -- steps per second
-            (initWorld $ emptyWorld pos (MessageHandler Nothing Initializing) idSup) -- world
+            (initWorld $ emptyWorld pos idSup) -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             timeHandle       -- time update
@@ -210,7 +198,6 @@ eventHandle event world
                 in action world 
             (MouseButton _, Up)
                 -> do
-                -- will clean this up eventually
                 let shouldGoOff = reverse
                         $ map releaseProcess
                         $ IntMap.elems
@@ -229,52 +216,50 @@ eventHandle event world
 -- Generic Gui -- Gui Elements -- collision detection
 isInRegion :: (Float, Float) -> Location -> Bool
 isInRegion (mx,my) (Location (ExactPos (cx,cy)) (bx,by)) =
-    cx - bx/2 <= mx
-    && mx <= cx + bx/2
-    && cy - by/2 <= my
-    && my <= cy + by/2
+       cx -  bx /2 <= mx
+    && mx <= cx +     bx /2
+    && cy -  by /2 <= my
+    && my <= cy    +  by /2
 isInRegion _ _ = False -- for pattern matching purposes
 
 commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> GuiWorld -> IO GuiWorld
 commHandle inbox outbox _t world
     = do
     -- check inbox
-    inNote <- atomically $ tryTakeTMVar inbox
-    let world' = processMessage inNote world
-    let outMessage = world' ^. messages . toSend
-    case outMessage of
-        Nothing -> return ()
-        Just reply -> do
-            atomically $ putTMVar outbox $ reply
-    return $ world' & messages . toSend .~ Nothing
+    messageReceived <- atomically $ tryTakeTMVar inbox
+    let world' = processMessage messageReceived world
+    let outMessage = world' ^. miscState . toSend
+    maybe (return ()) (atomically . (putTMVar outbox)) outMessage
+    return $ world' & miscState . toSend .~ Nothing
 
 processMessage :: Maybe ServerToClient -> GuiWorld -> GuiWorld
 processMessage messageReceived world =
-    let 
-        acknowledged = world & messages . toSend .~ Just CtsAcknowledge & messages . current .~ Waiting
+    let acknowledged = world & miscState . toSend  .~ Just CtsAcknowledge
+                             & miscState . current .~ Waiting
     in
     case messageReceived of
     Just (StcGameStart i) -> 
         acknowledged & miscState . position .~ i
     Just StcGameOver -> 
-        acknowledged & messages . current .~ Exiting
+        acknowledged & miscState . current .~ Exiting
     Just (StcGetPassSelection _ _) -> 
-        world & messages . current .~ (CollectPass Z.empty)
+        world & miscState . current .~ (CollectPass Z.empty)
     Just (StcWasPassed _) -> acknowledged -- soon these will be registered to hand zone
     Just (StcGetMove hand info) -> 
-        world & messages . current .~ (SelectCard hand info)
+        world & miscState . current .~ (SelectCard hand info)
     Just (StcRender rinfo ) -> registerWorld rinfo acknowledged  -- soon we'll just register the trick
     Just StcCleanTrick -> unregisterTrick acknowledged -- also unregistering shit?
     Nothing ->
-        case world ^. messages . current of
+        case world ^. miscState . current of
         SendCard c   -> unregisterId (_id c) $
-            world & messages . toSend .~ Just (CtsMove c) & messages . current .~ Waiting
+            world & miscState . toSend .~ Just (CtsMove c) & miscState . current .~ Waiting
         PassNow cs   -> 
+            -- TODO switch flip with &
             flip (Z.foldr (unregisterId . _id)) cs $
-            -- AS A TEMPORARY HACK we are unregistering upon sending this information, as it is the last place we know we know it.
-            world & messages . toSend .~ Just (CtsPassSelection cs) & messages . current .~ Waiting
-        Exiting      -> undefined-- send CTS terminate unless we just recieved it?
-        Initializing -> world
+            world & miscState . toSend .~ Just (CtsPassSelection cs) & miscState . current .~ Waiting
+        
+        Exiting         -> undefined-- send CTS terminate unless we just recieved it?
+        Initializing    -> world
 
         -- don't need to do anything for waiting, selectcard, collectpass
         Waiting         -> world
@@ -310,8 +295,7 @@ registerTrick trick world =
 registerGenericSetID :: Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
 registerGenericSetID mLoc mSpr mZon mTar world
     =
-    let 
-        (idNo, newSup) = freshId $ world ^. idSupply
+    let (idNo, newSup) = freshId $ world ^. idSupply
     in registerGeneric idNo mLoc mSpr mZon mTar $ world & idSupply .~ newSup
 
 registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
@@ -319,9 +303,9 @@ registerGeneric idNo mLoc mSpr mZon mTar world
     =
     world
     & markIIworld . clickables %~ IntMap.alter (const mZon) idNo
-    & markIIworld . targets %~ IntMap.alter (const mTar) idNo
-    & markIIworld . sprites %~ IntMap.alter (const mSpr) idNo
-    & markIIworld . locations %~ IntMap.alter (const mLoc) idNo
+    & markIIworld . targets    %~ IntMap.alter (const mTar) idNo
+    & markIIworld . sprites    %~ IntMap.alter (const mSpr) idNo
+    & markIIworld . locations  %~ IntMap.alter (const mLoc) idNo
 
 unregisterTrick :: GuiWorld -> GuiWorld
 unregisterTrick world =
@@ -335,10 +319,10 @@ unregisterId i world
     =
     -- should use a fold or traverse or some other clever lens thing
     world
-    & markIIworld . clickables %~ IntMap.delete i
-    & markIIworld . targets %~ IntMap.delete i
-    & markIIworld . sprites %~ IntMap.delete i
-    & markIIworld . locations %~ IntMap.delete i
+    & markIIworld . clickables  %~ IntMap.delete i
+    & markIIworld . targets     %~ IntMap.delete i
+    & markIIworld . sprites     %~ IntMap.delete i
+    & markIIworld . locations   %~ IntMap.delete i
     & markIIworld . gameObjects %~ IntMap.delete i
 
 {- Generic Gui elements -}
@@ -347,15 +331,15 @@ registerCard pos card world
     =
     let 
         cid = _id card
-        c = Clickable cid $ return . (set (markIIworld . dragged) (Just cid))
-        s = Sprite   $ renderCard card
-        l = Location pos (80,60)
+        c   = Clickable cid $ return . (set (markIIworld . dragged) (Just cid))
+        s   = Sprite        $ renderCard card
+        l   = Location  pos (80,60)
     in
     -- can I use better lens magic for this?
     world
-    & markIIworld . clickables %~ IntMap.insert cid c
-    & markIIworld . sprites %~ IntMap.insert cid s
-    & markIIworld . locations %~ IntMap.insert cid l
+    & markIIworld . clickables  %~ IntMap.insert cid c
+    & markIIworld . sprites     %~ IntMap.insert cid s
+    & markIIworld . locations   %~ IntMap.insert cid l
     & markIIworld . gameObjects %~ IntMap.insert cid card
 
 {-registerButton :: Location -> Sprite -> ClickProcess -> GuiWorld -> GuiWorld-}
@@ -405,6 +389,7 @@ renderSprite ((Sprite pic), (Location zone _bbox))
         (px,py) = extractPos zone correctIdForSprite
     in
     Translate px py $ pic
+
 {-renderSprite ((Sprite pic), (Location (HandArea (px,py)) _bbox))
     = Translate px py $ pic-}
 -- not correct way to render something in a zone
@@ -421,10 +406,10 @@ renderSprite ((Sprite pic), (Location zone _bbox))
 renderCard :: Card -> Picture
 renderCard card
     = Pictures
-        [ Color magenta $ rectangleSolid (60) (80)
-        , Color (greyN 0.575) $ circleSolid 20
-        , Color black $ Translate (-10) (-5) $ Scale (0.125) (0.125) $ Text $ pretty card
-        , Color black $ rectangleWire (60) (80)
+        [ Color magenta $ rectangleSolid ( 60)  ( 80)
+        , Color         ( greyN 0.575)   $ circleSolid 20
+        , Color black   $ Translate      ( -10) ( -5) $ Scale ( 0.125) ( 0.125) $ Text $ pretty card
+        , Color black   $ rectangleWire  ( 60)  ( 80)
         ]
 
 emptyRender :: MarkIIRender
@@ -466,10 +451,9 @@ initWorld =
 playAreaHandleRelease :: ClickProcess
 playAreaHandleRelease world = return $ maybe id processCardRelease (world ^. markIIworld . dragged) $ world
 
-
 processCardRelease :: Int -> GuiWorld -> GuiWorld
 processCardRelease i world =
-        case (world ^. messages . current) of
+        case (world ^. miscState . current) of
             CollectPass soFar ->
                 let card = views (markIIworld . gameObjects) (IntMap.! i) world
                     (mx,my) = world ^. miscState . mouseCoords
@@ -477,7 +461,7 @@ processCardRelease i world =
                 if Z.size soFar < 3 && Z.notMember card soFar
                     -- Card not in set and size of set less than 3
                 then world  
-                    & messages . current .~ 
+                    & miscState . current .~ 
                             (
                                 let newSet = (Z.insert card soFar) 
                                 in 
@@ -487,24 +471,29 @@ processCardRelease i world =
                             )
                     -- TODO FIXME implement button for the switch
                     & markIIworld . locations %~ IntMap.insert i (Location (ExactPos (mx,my)) (80,60))
-                    & markIIworld . dragged .~ Nothing
-                    & miscState . dbgInfo %~ ("Passing this card. ":)
-                else world & miscState . dbgInfo %~ ("cannot add card to passing set ":)
+                    & markIIworld . dragged   .~ Nothing
+                    & miscState   . dbgInfo   %~ ("Passing this card. ":)
+                else world 
+                    & miscState   . dbgInfo   %~ ("cannot add card to passing set ":)
+
             SelectCard hand info  ->
                 let card = views (markIIworld . gameObjects) (IntMap.! i) world
                     (mx,my) = world ^. miscState . mouseCoords
                 in
                 if isValidPlay hand info card
                 then world
-                        & messages    . current .~ SendCard card
-                        & markIIworld . dragged .~ Nothing
+                        & miscState   . current   .~ SendCard card
+                        & markIIworld . dragged   .~ Nothing
                         & markIIworld . locations %~ IntMap.insert i (Location (ExactPos (mx,my)) (80,60))
-                else world & miscState . dbgInfo %~ ("Not valid play. ":)
+                else world 
+                        & miscState   . dbgInfo   %~ ("Not valid play. ":)
+
             Waiting -> world
-            s -> error $ "dragging id " ++ (show i) ++ " while in state " ++ show s
+
+            s       -> error $ "dragging id " ++ (show i) ++ " while in state " ++ show s
 
 gameWindowHandleRelease :: ClickProcess
 gameWindowHandleRelease world = return $ world & markIIworld . dragged .~ Nothing
  
-emptyWorld :: Int -> MessageHandler -> Supply -> GuiWorld
-emptyWorld pos mess sup = (GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0)) emptyRender mess sup)  -- world
+emptyWorld :: Int -> Supply -> GuiWorld
+emptyWorld pos sup = GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0) Nothing Initializing) emptyRender sup
