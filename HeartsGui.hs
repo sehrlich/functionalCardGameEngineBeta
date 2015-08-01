@@ -56,9 +56,9 @@ data GuiWorld = GuiWorld
                 { _miscState  :: MiscState
                 , _objectStore  :: ObjectStore
                 , _idSupply     :: Supply
+                , _thingWarehouse :: IntMap Thing
                 }
                 -- somewhere needs access to mouse position
--- TODO fix this, maybe with lenses, maybe just with a principled reorganization of guiworld and constituents
 
 data MiscState = MiscState
                 { _receivedInfo :: RenderInfo
@@ -80,24 +80,27 @@ data MiscState = MiscState
  -
  - Alternatively zones might want to be a typeclass
  -}
-class HZone z where
-    extractPos :: z -> i -> Pos
-    insert :: a -> z -> z -- maybe a should also have i in signature?
-    remove :: i -> z -> z
-    clean :: z -> z -- empties the zone
-    allMems :: z -> [i] -- returns allMems
+class HZone z where -- Switch to multiparameter type classes
+    extractPos :: z -> Int -> Maybe Pos
+    insert     :: Int -> GuiWorld -> z -> z -- should be w in general case
+    remove     :: Int -> z -> z
+    clean      :: z -> z -- empties the zone
+    allMems    :: z -> [Int] -- returns allMems
+    checkPos   :: z -> Pos -> Maybe Int
+    render     :: z -> [(Pos, Sprite)]
 
-data Zone          = PlayArea Pos | ExactPos Pos
+data ExactZone = ExactZone (IntMap Pos)
+data SingletonZone          = ExactPos Pos Thing
                     -- | HandArea Pos
                     ---  Zone ManagementStyle Intmap Pos
-instance HZone Zone where
+instance HZone SingletonZone where
     extractPos z _i = case z of
-                      (PlayArea p) -> p
-                      (ExactPos p) -> p
-    insert _a z = z
+                      (ExactPos p _ ) -> Just p
+    insert _i _w z = z
     remove _i z = z
     clean z = z
     allMems _ = []
+    checkPos _z _p = Nothing
 
 {-type ManagementStyle = GuiWorld -> Pos-}
 {-
@@ -109,37 +112,21 @@ insertNextPos = undefined
 
 -- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
 -- or oranized by Zone or something
+type DebugInfo = [String]
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
 type Bbox          = (Float, Float)
 type Pos           = (Float, Float)
 data Sprite        = Sprite Picture -- RenderProcess if we need io to render?
-data Location      = Location Zone Bbox -- will want vector stuff to handle/change locations
+data Location      = Location Pos Bbox -- will want vector stuff to handle/change locations
 data Clickable     = Clickable
                     { depth        :: Depth
-                    , clickProcess :: ClickProcess
+                    , clickProcess :: Trigger
                     }
 data Target        = Target
-                    { releaseProcess :: ClickProcess
+                    { releaseProcess :: Trigger
                     -- id of thing
                     }
--- type RenderProcess = IO Picture
-type ClickProcess  = GuiWorld -> IO GuiWorld
-
-data ObjectStore = ObjectStore
-    -- component entity like system
-    { _clickables  :: IntMap Clickable
-    , _targets     :: IntMap Target
-    , _sprites     :: IntMap Sprite
-    -- consider using viewports rather than locations
-    , _locations   :: IntMap Location -- should go through zones
-    , _gameObjects :: IntMap HeartsCommon.Card
-    , _dragged     :: Maybe Int -- ID of card currently being dragged
-    -- movement paths handed to us
-    -- need Zones
-    }
-    -- possibly name or debug info or logging deserves a place here
-    -- will also want a set of logical zones that arrange things inside of them e,g, hand play
-type DebugInfo = [String]
+type Trigger  = GuiWorld -> IO GuiWorld
 
 data Directive  = Exiting
                 | Initializing
@@ -150,9 +137,39 @@ data Directive  = Exiting
                 | Waiting
                 deriving (Show)
 
+data ObjectStore = ObjectStore
+    -- component entity like system
+    { _clickables  :: IntMap Clickable
+    , _targets     :: IntMap Target
+    , _sprites     :: IntMap Sprite
+    -- consider using viewports rather than locations
+    , _locations   :: IntMap Location -- [ExactZone] should go through zones
+    , _gameObjects :: IntMap HeartsCommon.Card
+    , _dragged     :: Maybe Int -- ID of card currently being dragged
+    -- dragged can be changed into a particular zone once the new regime works
+    -- movement paths handed to us
+    -- need Zones
+    }
+-- alternatively 
+
+data Thing = Thing
+    { _action :: Maybe Clickable
+    , _reaction :: Maybe Target
+    , _object :: Maybe Card
+    , _sprite :: Maybe Sprite
+    }
+
 makeLenses ''GuiWorld
 makeLenses ''MiscState
 makeLenses ''ObjectStore
+
+instance HZone ExactZone where
+    extractPos (ExactZone z) i = IntMap.lookup i z
+    insert i w (ExactZone z)   = ExactZone $ IntMap.insert i (w ^. miscState . mouseCoords) z
+    remove i (ExactZone z)     = ExactZone $ IntMap.delete i z
+    clean _z                   = ExactZone $ IntMap.empty
+    allMems (ExactZone z)      = IntMap.keys z
+    checkPos _z _p             = error "checkPos not implemented"
 
 _addDebug :: String -> GuiWorld -> GuiWorld
 _addDebug s w = w & miscState . dbgInfo %~ (s:)
@@ -161,6 +178,7 @@ _addDebug s w = w & miscState . dbgInfo %~ (s:)
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> Int -> IO ()
 guiThread inbox outbox pos
     = do
+        -- server should be passing supply, probably in intiatialization method
         idSup <- newSupply
         playIO
             window
@@ -215,12 +233,11 @@ eventHandle event world
 
 -- Generic Gui -- Gui Elements -- collision detection
 isInRegion :: (Float, Float) -> Location -> Bool
-isInRegion (mx,my) (Location (ExactPos (cx,cy)) (bx,by)) =
+isInRegion (mx,my) (Location ((cx,cy)) (bx,by)) =
        cx -  bx /2 <= mx
     && mx <= cx +     bx /2
     && cy -  by /2 <= my
     && my <= cy    +  by /2
-isInRegion _ _ = False -- for pattern matching purposes
 
 commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> GuiWorld -> IO GuiWorld
 commHandle inbox outbox _t world
@@ -284,12 +301,12 @@ registerWorld (RenderEmpty) w = w & objectStore .~ emptyRender
 registerHand :: Hand -> GuiWorld -> GuiWorld
 registerHand hand world =
     S.foldrWithIndex rgstr world (orderPile hand)
-    where rgstr i = registerCard $ ExactPos (-351+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
+    where rgstr i = registerCard $ (-351+ 55*(fromIntegral i), -200 ) -- Switch to HandArea
 
 registerTrick :: Trick -> GuiWorld -> GuiWorld
 registerTrick trick world =
     S.foldrWithIndex rgstr world trick
-    where rgstr i = registerCard $ ExactPos (-351+ 55*(fromIntegral i), 200 ) -- Switch to HandArea
+    where rgstr i = registerCard $ (-351+ 55*(fromIntegral i), 200 ) -- Switch to HandArea
 
 {- Generic Gui elements -}
 registerGenericSetID :: Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
@@ -298,14 +315,20 @@ registerGenericSetID mLoc mSpr mZon mTar world
     let (idNo, newSup) = freshId $ world ^. idSupply
     in registerGeneric idNo mLoc mSpr mZon mTar $ world & idSupply .~ newSup
 
+registerThing :: Int -> Thing -> GuiWorld -> GuiWorld -- do we want an initial zone?
+registerThing i t world = world & thingWarehouse %~ IntMap.insert i t
+
 registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
 registerGeneric idNo mLoc mSpr mZon mTar world
     =
+    let t = Thing mZon mTar Nothing mSpr
+    in 
     world
     & objectStore . clickables %~ IntMap.alter (const mZon) idNo
     & objectStore . targets    %~ IntMap.alter (const mTar) idNo
     & objectStore . sprites    %~ IntMap.alter (const mSpr) idNo
     & objectStore . locations  %~ IntMap.alter (const mLoc) idNo
+    & registerThing idNo t
 
 unregisterTrick :: GuiWorld -> GuiWorld
 unregisterTrick world =
@@ -324,9 +347,11 @@ unregisterId i world
     & objectStore . sprites     %~ IntMap.delete i
     & objectStore . locations   %~ IntMap.delete i
     & objectStore . gameObjects %~ IntMap.delete i
+    & thingWarehouse %~ IntMap.delete i
+    -- probably need to broadcast delete over zones
 
 {- Generic Gui elements -}
-registerCard :: Zone -> Card -> GuiWorld -> GuiWorld
+registerCard :: Pos -> Card -> GuiWorld -> GuiWorld
 registerCard pos card world
     =
     let 
@@ -334,6 +359,8 @@ registerCard pos card world
         c   = Clickable cid $ return . (set (objectStore . dragged) (Just cid))
         s   = Sprite        $ renderCard card
         l   = Location  pos (80,60)
+        thing = Thing (Just c) Nothing (Just card) (Just s)
+        zone = ExactPos pos thing
     in
     -- can I use better lens magic for this?
     world
@@ -341,8 +368,9 @@ registerCard pos card world
     & objectStore . sprites     %~ IntMap.insert cid s
     & objectStore . locations   %~ IntMap.insert cid l
     & objectStore . gameObjects %~ IntMap.insert cid card
+    & thingWarehouse %~ IntMap.insert cid thing
 
-{-registerButton :: Location -> Sprite -> ClickProcess -> GuiWorld -> GuiWorld-}
+{-registerButton :: Location -> Sprite -> Trigger -> GuiWorld -> GuiWorld-}
 {--- registerButton = undefined -- needs to actually register button-}
 
 drawWorld :: GuiWorld -> IO Picture
@@ -353,15 +381,15 @@ drawWorld world
         dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
     -- will also want to render in depth order
     return $ Pictures [ dbg
-                      , render world
+                      , renderW world
                       ]
 
 -- If I moved dragged into an animtions record then I'll either
 -- need to make this take the whole world, or, more plausibly,
 -- have a renderAnim separate from renderStatic or something
 -- also consider where textual things are
-render :: GuiWorld -> Picture
-render world
+renderW :: GuiWorld -> Picture
+renderW world
     = Pictures [renderable, dragging]
     -- the proper alternative here is to iterate over zones rendering everything inside them
     -- can render debug info here as well
@@ -372,7 +400,7 @@ render world
             $ IntMap.intersectionWith (,) 
                 (world ^. objectStore . sprites) 
                 (world ^. objectStore . locations) 
-       mpos = ExactPos $ world ^. miscState . mouseCoords
+       mpos = world ^. miscState . mouseCoords
        dragging =
             case _dragged (world ^. objectStore) of
                 Just i -> renderSprite  ( views (objectStore . sprites) (IntMap.! i) world
@@ -383,25 +411,24 @@ render world
 -- Will need a way to turn a location into coordinates
 -- will be made obsolete when zones come online
 renderSprite :: (Sprite, Location) -> Picture
-renderSprite ((Sprite pic), (Location zone _bbox))
-    = let
-        correctIdForSprite = error $ "tried to render sprite for: " ++ show pic
-        (px,py) = extractPos zone correctIdForSprite
+renderSprite ((Sprite pic), (Location pos _bbox))
+    = 
+    let (px,py) = pos
+        {-correctIdForSprite = error $ "tried to render sprite for: " ++ show pic
+        (px,py) = maybe (error "no position") id $ extractPos zone correctIdForSprite-}
     in
     Translate px py $ pic
 
-{-renderSprite ((Sprite pic), (Location (HandArea (px,py)) _bbox))
-    = Translate px py $ pic-}
 -- not correct way to render something in a zone
 
 -- this will iterate over objects contained by zone and
 -- display each displayable one at their location
 -- (in order of depth)
--- then clip the resulting picture to its bounding box
+-- then clip the resulting picture to its (Zone's) bounding box?
 -- translate to zone position
 -- and return the picture
-{-renderZone :: Zone -> Picture-}
-{-renderZone = undefined-}
+{-renderZone :: GuiWorld -> Zone -> Picture
+renderZone = undefined-}
 
 renderCard :: Card -> Picture
 renderCard card
@@ -420,7 +447,7 @@ initWorld :: GuiWorld -> GuiWorld
 initWorld =
     (registerGenericSetID
     -- The PlayArea
-        (Just $ Location (ExactPos (0,0)) (400,300))
+        (Just $ Location ((0,0)) (400,300))
         (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
         {--| No particular action happens upon clicking in play area --}
         (Just $ Clickable 0 return)
@@ -430,7 +457,7 @@ initWorld =
     . 
     (registerGenericSetID
      --    The game window
-        (Just $ Location (ExactPos (0,0)) (800,600))
+        (Just $ Location ((0,0)) (800,600))
         (Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)))
         {--| No particular action happens upon clicking in window --}
         (Just $ Clickable 0 return)
@@ -440,7 +467,7 @@ initWorld =
     .
     (registerGenericSetID
     -- The Hand
-        (Just $ Location (ExactPos (0,-200)) (800,100))
+        (Just $ Location ((0,-200)) (800,100))
         (Just $ Sprite (Color (makeColor 0.4 0.7 0.2 0.5) $ rectangleSolid (800) (100)))
         {--| No particular action happens upon clicking in window --}
         (Just $ Clickable 0 return)
@@ -448,7 +475,7 @@ initWorld =
         (Just $ Target return)
     )
 
-playAreaHandleRelease :: ClickProcess
+playAreaHandleRelease :: Trigger
 playAreaHandleRelease world = return $ maybe id processCardRelease (world ^. objectStore . dragged) $ world
 
 processCardRelease :: Int -> GuiWorld -> GuiWorld
@@ -470,7 +497,7 @@ processCardRelease i world =
                                 else CollectPass newSet
                             )
                     -- TODO FIXME implement button for the switch
-                    & objectStore . locations %~ IntMap.insert i (Location (ExactPos (mx,my)) (80,60))
+                    & objectStore . locations %~ IntMap.insert i (Location ((mx,my)) (80,60))
                     & objectStore . dragged   .~ Nothing
                     & miscState   . dbgInfo   %~ ("Passing this card. ":)
                 else world 
@@ -484,7 +511,7 @@ processCardRelease i world =
                 then world
                         & miscState   . current   .~ SendCard card
                         & objectStore . dragged   .~ Nothing
-                        & objectStore . locations %~ IntMap.insert i (Location (ExactPos (mx,my)) (80,60))
+                        & objectStore . locations %~ IntMap.insert i (Location ((mx,my)) (80,60))
                 else world 
                         & miscState   . dbgInfo   %~ ("Not valid play. ":)
 
@@ -492,8 +519,8 @@ processCardRelease i world =
 
             s       -> error $ "dragging id " ++ (show i) ++ " while in state " ++ show s
 
-gameWindowHandleRelease :: ClickProcess
+gameWindowHandleRelease :: Trigger
 gameWindowHandleRelease world = return $ world & objectStore . dragged .~ Nothing
  
 emptyWorld :: Int -> Supply -> GuiWorld
-emptyWorld pos sup = GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0) Nothing Initializing) emptyRender sup
+emptyWorld pos sup = GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0) Nothing Initializing) emptyRender sup (IntMap.empty)
