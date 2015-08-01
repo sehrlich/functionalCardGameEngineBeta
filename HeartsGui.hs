@@ -37,6 +37,7 @@ import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 -- Spawns child thread for communication with server
 --
 -- -- Communication
+-- Initialization method should pass supply, possibly seed if seed is needed?
 -- Protocol is defined where?
 -- Render Messages: here is list of game objects
 -- Requests: Give back particular input
@@ -55,11 +56,11 @@ import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 data GuiWorld = GuiWorld
                 { _miscState  :: MiscState
                 , _objectStore  :: ObjectStore
-                , _idSupply     :: Supply
                 , _thingWarehouse :: IntMap Thing
+                , _zones :: [AllZones]
                 }
-                -- somewhere needs access to mouse position
 
+-- possibly rename current to currently
 data MiscState = MiscState
                 { _receivedInfo :: RenderInfo
                 , _dbgInfo      :: DebugInfo
@@ -67,9 +68,12 @@ data MiscState = MiscState
                 , _mouseCoords  :: Pos
                 , _toSend       :: Maybe ClientToServer
                 , _current      :: Directive
-                -- _animation  --- collect drag and server generated animations
-                -- may also need a place to register current effect seeking target
+                , _idSupply     :: Supply
                 }
+                -- may need to register current effect seeking target
+                
+                -- _animation  --- collect drag and server generated animations
+                -- these should be appropriate zones
 
 {- Zones are data structures to handle and organize objects on the screen
  - they should support the following operations
@@ -78,30 +82,36 @@ data MiscState = MiscState
  - accept objectid to be handled
  - delete objectid (i.e. stop representing them)
  -
- - Alternatively zones might want to be a typeclass
+ - on the subject of having zones as typeclasses, check out
+ - http://www.haskellforall.com/2012/05/scrap-your-type-classes.html
+ - for an alternative
  -}
 class HZone z where -- Switch to multiparameter type classes
-    extractPos :: z -> Int -> Maybe Pos
-    insert     :: Int -> GuiWorld -> z -> z -- should be w in general case
+    extract    :: z -> Int -> Maybe Thing
+    insert     :: Int -> GuiWorld -> z -> z -- should be w in general case 
+                    -- also inserting by ID means we need to keep the thing warehouse
+                    -- around, which seems wrong
     remove     :: Int -> z -> z
     clean      :: z -> z -- empties the zone
     allMems    :: z -> [Int] -- returns allMems
     checkPos   :: z -> Pos -> Maybe Int
     render     :: z -> [(Pos, Sprite)]
 
-data ExactZone = ExactZone (IntMap Pos)
-data SingletonZone          = ExactPos Pos Thing
+data ExactZone = ExactZone (IntMap Thing)
+data SingletonZone          = ExactPos Pos (Maybe Thing)
                     -- | HandArea Pos
                     ---  Zone ManagementStyle Intmap Pos
 instance HZone SingletonZone where
-    extractPos z _i = case z of
-                      (ExactPos p _ ) -> Just p
+    extract (ExactPos _  t) _i = t -- should check id matches
     insert _i _w z = z
     remove _i z = z
     clean z = z
     allMems _ = []
     checkPos _z _p = Nothing
+    render (ExactPos p t) = maybe [] ((:[]). ((,) p)) $ maybe Nothing _sprite t
 
+data AllZones = HSingleton SingletonZone
+              -- | HExact ExactZone
 {-type ManagementStyle = GuiWorld -> Pos-}
 {-
 insertAtMousePos :: ManagementStyle
@@ -162,14 +172,19 @@ data Thing = Thing
 makeLenses ''GuiWorld
 makeLenses ''MiscState
 makeLenses ''ObjectStore
+-- makeLenses ''Thing
 
 instance HZone ExactZone where
-    extractPos (ExactZone z) i = IntMap.lookup i z
-    insert i w (ExactZone z)   = ExactZone $ IntMap.insert i (w ^. miscState . mouseCoords) z
+    extract    (ExactZone z) i = IntMap.lookup i z
+    insert i w (ExactZone z)   = 
+        case (w ^. thingWarehouse & IntMap.lookup i) of -- should set pos to (w ^. miscState . mouseCoords)
+            Just t -> ExactZone $ IntMap.insert i t z
+            Nothing -> ExactZone z
     remove i (ExactZone z)     = ExactZone $ IntMap.delete i z
     clean _z                   = ExactZone $ IntMap.empty
     allMems (ExactZone z)      = IntMap.keys z
     checkPos _z _p             = error "checkPos not implemented"
+    render _z = error "render not implemented"
 
 _addDebug :: String -> GuiWorld -> GuiWorld
 _addDebug s w = w & miscState . dbgInfo %~ (s:)
@@ -312,8 +327,8 @@ registerTrick trick world =
 registerGenericSetID :: Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
 registerGenericSetID mLoc mSpr mZon mTar world
     =
-    let (idNo, newSup) = freshId $ world ^. idSupply
-    in registerGeneric idNo mLoc mSpr mZon mTar $ world & idSupply .~ newSup
+    let (idNo, newSup) = freshId $ world ^. miscState .idSupply
+    in registerGeneric idNo mLoc mSpr mZon mTar $ world & miscState . idSupply .~ newSup
 
 registerThing :: Int -> Thing -> GuiWorld -> GuiWorld -- do we want an initial zone?
 registerThing i t world = world & thingWarehouse %~ IntMap.insert i t
@@ -360,7 +375,7 @@ registerCard pos card world
         s   = Sprite        $ renderCard card
         l   = Location  pos (80,60)
         thing = Thing (Just c) Nothing (Just card) (Just s)
-        zone = ExactPos pos thing
+        zone = ExactPos pos (Just thing)
     in
     -- can I use better lens magic for this?
     world
@@ -369,6 +384,7 @@ registerCard pos card world
     & objectStore . locations   %~ IntMap.insert cid l
     & objectStore . gameObjects %~ IntMap.insert cid card
     & thingWarehouse %~ IntMap.insert cid thing
+    & zones %~ (HSingleton zone :)
 
 {-registerButton :: Location -> Sprite -> Trigger -> GuiWorld -> GuiWorld-}
 {--- registerButton = undefined -- needs to actually register button-}
@@ -433,15 +449,22 @@ renderZone = undefined-}
 renderCard :: Card -> Picture
 renderCard card
     = Pictures
-        [ Color magenta $ rectangleSolid ( 60  ) ( 80 )
-        , Color         ( greyN 0.575 )  $ circleSolid 20
-        , Color black   $ Translate      ( -10 ) ( -5 ) $ Scale ( 0.125) ( 0.125) $ Text $ pretty card
-        , Color black   $ rectangleWire  ( 60  ) ( 80 )
+        [ suitColor $ rectangleSolid ( 60  ) ( 80 )
+        , Color       ( greyN 0.575 )  $ circleSolid 20
+        , Color black $ Translate      ( -10 ) ( -5 ) $ Scale ( 0.125) ( 0.125) $ Text $ pretty card
+        , Color white $ rectangleWire  ( 60  ) ( 80 )
         ]
+        where suitColor = 
+                case _suit card of
+                    Clubs -> Color black
+                    Spades -> Color black
+                    Hearts -> Color red
+                    Diamonds -> Color red
 
 emptyRender :: ObjectStore
 emptyRender = ObjectStore IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
 
+-- these should each be things in a singletonZone. Likewise, dragging should be a singletonZone
 -- Hearts specific
 initWorld :: GuiWorld -> GuiWorld
 initWorld =
@@ -523,4 +546,4 @@ gameWindowHandleRelease :: Trigger
 gameWindowHandleRelease world = return $ world & objectStore . dragged .~ Nothing
  
 emptyWorld :: Int -> Supply -> GuiWorld
-emptyWorld pos sup = GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0) Nothing Initializing) emptyRender sup (IntMap.empty)
+emptyWorld pos sup = GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0) Nothing Initializing sup) emptyRender (IntMap.empty) []
