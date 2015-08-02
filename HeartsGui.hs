@@ -134,7 +134,7 @@ type DebugInfo = [String]
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
 type Bbox          = (Float, Float)
 type Pos           = (Float, Float)
-data Sprite        = Sprite Picture -- RenderProcess if we need io to render?
+data Sprite        = Sprite Picture Bbox-- RenderProcess if we need io to render?
 data Location      = Location Pos Bbox -- will want vector stuff to handle/change locations
 data Clickable     = Clickable
                     { depth        :: Depth
@@ -175,7 +175,6 @@ data Thing = Thing
     , _reaction :: Maybe Target
     , _object :: Maybe Card
     , _sprite :: Maybe Sprite
-    , _bbox :: Maybe Bbox
     }
 
 makeLenses ''GuiWorld
@@ -361,7 +360,7 @@ registerThing i t world = world & thingWarehouse %~ IntMap.insert i t
 registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
 registerGeneric idNo mLoc mSpr mZon mTar world
     =
-    let t = Thing mZon mTar Nothing mSpr Nothing -- needs bounding box?
+    let t = Thing mZon mTar Nothing mSpr 
     in 
     world
     & objectStore . clickables %~ IntMap.alter (const mZon) idNo
@@ -397,9 +396,9 @@ registerCard pos card world
     let 
         cid = _id card
         c   = Clickable cid $ return . (set (objectStore . dragged) (Just cid))
-        s   = Sprite        $ renderCard card
+        s   = Sprite        (renderCard card) (80,60)
         l   = Location  pos (80,60)
-        thing = Thing (Just c) Nothing (Just card) (Just s) (Just (80,60))
+        thing = Thing (Just c) Nothing (Just card) (Just s)
         zone = ExactPos pos (Just thing)
     in
     -- can I use better lens magic for this?
@@ -455,7 +454,7 @@ _renderW world
 -- Will need a way to turn a location into coordinates
 -- will be made obsolete when zones come online
 _renderSprite :: (Sprite, Location) -> Picture
-_renderSprite ((Sprite pic), (Location pos _bbox))
+_renderSprite ((Sprite pic _box), (Location pos _bbox))
     = 
     let (px,py) = pos
         {-correctIdForSprite = error $ "tried to render sprite for: " ++ show pic
@@ -468,7 +467,7 @@ _renderSprite ((Sprite pic), (Location pos _bbox))
 renderZones :: GuiWorld -> Picture
 renderZones world = 
     let zs = world ^. zones
-        combine ((x,y), Sprite spr) = Translate x y spr
+        combine ((x,y), (Sprite spr _bbox)) = Translate x y spr
     in
     Pictures $ concatMap ((map combine) . render) zs
 
@@ -496,8 +495,7 @@ playArea = Thing
             Nothing 
             (Just $ Target playAreaHandleRelease) 
             Nothing 
-            (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))) 
-            (Just (400,300))
+            $ Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)) (400,300)
 playZone :: AllZones
 playZone = HSingleton (ExactPos (0,0) $ Just playArea)
 
@@ -507,8 +505,7 @@ gameWindow = Thing
             Nothing 
             (Just $ Target gameWindowHandleRelease)
             Nothing 
-            (Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)))
-            (Just (800,600))
+            $ Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)) (800,600)
 gameWindowZone :: AllZones
 gameWindowZone = HSingleton (ExactPos (0,0) $ Just gameWindow)
 
@@ -519,7 +516,7 @@ initWorld =
     (registerGenericSetID
     -- The PlayArea
         (Just $ Location ((0,0)) (400,300))
-        (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
+        Nothing -- (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
         {--| No particular action happens upon clicking in play area --}
         (Just $ Clickable 0 return)
         {--| If a card is being dragged, we try to play it as appropriate --}
@@ -529,7 +526,7 @@ initWorld =
     (registerGenericSetID
      --    The game window
         (Just $ Location ((0,0)) (800,600))
-        (Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)))
+        Nothing -- (Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)))
         {--| No particular action happens upon clicking in window --}
         (Just $ Clickable 0 return)
         {--| If a card is being dragged, it snaps back to zone --}
@@ -539,7 +536,7 @@ initWorld =
     (registerGenericSetID
     -- The Hand
         (Just $ Location ((0,-200)) (800,100))
-        (Just $ Sprite (Color (makeColor 0.4 0.7 0.2 0.5) $ rectangleSolid (800) (100)))
+        (Just $ Sprite (Color (makeColor 0.4 0.7 0.2 0.5) $ rectangleSolid (800) (100)) (800,100))
         {--| No particular action happens upon clicking in window --}
         (Just $ Clickable 0 return)
         {--| If a card is being dragged, we try to play it as appropriate --}
