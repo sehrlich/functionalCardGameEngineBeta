@@ -26,7 +26,7 @@ import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
 import Graphics.Gloss
---import Graphics.Gloss.Data.Color (makeColor)
+-- import qualified Graphics.Gloss.Data.Color as C
 import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 
 -- Overview:
@@ -54,26 +54,34 @@ import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 -- List of objects/zones
 -- Need some Gui Info such as cursor position
 data GuiWorld = GuiWorld
-                { _miscState  :: MiscState
-                , _objectStore  :: ObjectStore
-                , _thingWarehouse :: IntMap Thing
-                , _zones :: [AllZones]
-                }
+    { _miscState  :: MiscState
+    , _objectStore  :: ObjectStore
+    , _thingWarehouse :: IntMap Thing
+    , _zones :: [AllZones]
+    }
+
+data ZoneList = ZoneList
+    { _hand :: ExactZone -- managedzone
+    , _playarea :: ExactZone -- managedzone
+    , _draggingzone :: SingletonZone
+    , _guiobjects :: ExactZone
+    }
+                
 
 -- possibly rename current to currently
 data MiscState = MiscState
-                { _receivedInfo :: RenderInfo
-                , _dbgInfo      :: DebugInfo
-                , _position     :: Int       -- Player position
-                , _mouseCoords  :: Pos
-                , _toSend       :: Maybe ClientToServer
-                , _current      :: Directive
-                , _idSupply     :: Supply
-                }
-                -- may need to register current effect seeking target
-                
-                -- _animation  --- collect drag and server generated animations
-                -- these should be appropriate zones
+    { _receivedInfo :: RenderInfo
+    , _dbgInfo      :: DebugInfo
+    , _position     :: Int       -- Player position
+    , _mouseCoords  :: Pos
+    , _toSend       :: Maybe ClientToServer
+    , _current      :: Directive
+    , _idSupply     :: Supply
+    }
+    -- may need to register current effect seeking target
+    
+    -- _animation  --- collect drag and server generated animations
+    -- these should be appropriate zones
 
 {- Zones are data structures to handle and organize objects on the screen
  - they should support the following operations
@@ -111,7 +119,7 @@ instance HZone SingletonZone where
     render (ExactPos p t) = maybe [] ((:[]). ((,) p)) $ maybe Nothing _sprite t
 
 data AllZones = HSingleton SingletonZone
-              -- | HExact ExactZone
+              | HExact ExactZone
 {-type ManagementStyle = GuiWorld -> Pos-}
 {-
 insertAtMousePos :: ManagementStyle
@@ -167,6 +175,7 @@ data Thing = Thing
     , _reaction :: Maybe Target
     , _object :: Maybe Card
     , _sprite :: Maybe Sprite
+    , _bbox :: Maybe Bbox
     }
 
 makeLenses ''GuiWorld
@@ -185,6 +194,22 @@ instance HZone ExactZone where
     allMems (ExactZone z)      = IntMap.keys z
     checkPos _z _p             = error "checkPos not implemented"
     render _z = error "render not implemented"
+
+instance HZone AllZones where
+    extract (HExact z) i = extract z i
+    extract (HSingleton z) i = extract z i
+    insert i w (HExact z) = HExact $ insert i w z 
+    insert i w (HSingleton z) = HSingleton $ insert i w z 
+    remove i (HExact z) = HExact $ remove i z 
+    remove i (HSingleton z) = HSingleton $ remove i z 
+    clean (HExact z) = HExact $ clean z 
+    clean (HSingleton z) = HSingleton $ clean z 
+    allMems (HExact z) = allMems z 
+    allMems (HSingleton z) = allMems z 
+    checkPos (HExact z) p = checkPos z p 
+    checkPos (HSingleton z) p = checkPos z p 
+    render (HSingleton z) = render z 
+    render (HExact z) = render z 
 
 _addDebug :: String -> GuiWorld -> GuiWorld
 _addDebug s w = w & miscState . dbgInfo %~ (s:)
@@ -336,7 +361,7 @@ registerThing i t world = world & thingWarehouse %~ IntMap.insert i t
 registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
 registerGeneric idNo mLoc mSpr mZon mTar world
     =
-    let t = Thing mZon mTar Nothing mSpr
+    let t = Thing mZon mTar Nothing mSpr Nothing -- needs bounding box?
     in 
     world
     & objectStore . clickables %~ IntMap.alter (const mZon) idNo
@@ -374,7 +399,7 @@ registerCard pos card world
         c   = Clickable cid $ return . (set (objectStore . dragged) (Just cid))
         s   = Sprite        $ renderCard card
         l   = Location  pos (80,60)
-        thing = Thing (Just c) Nothing (Just card) (Just s)
+        thing = Thing (Just c) Nothing (Just card) (Just s) (Just (80,60))
         zone = ExactPos pos (Just thing)
     in
     -- can I use better lens magic for this?
@@ -389,6 +414,8 @@ registerCard pos card world
 {-registerButton :: Location -> Sprite -> Trigger -> GuiWorld -> GuiWorld-}
 {--- registerButton = undefined -- needs to actually register button-}
 
+{- Need to display scores, show cards in trick in appropriate place
+ - indicate opponents hands, tricks taken -}
 drawWorld :: GuiWorld -> IO Picture
 drawWorld world
     = do
@@ -397,21 +424,22 @@ drawWorld world
         dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
     -- will also want to render in depth order
     return $ Pictures [ dbg
-                      , renderW world
+                      -- , renderW world
+                      , renderZones world
                       ]
 
 -- If I moved dragged into an animtions record then I'll either
 -- need to make this take the whole world, or, more plausibly,
 -- have a renderAnim separate from renderStatic or something
 -- also consider where textual things are
-renderW :: GuiWorld -> Picture
-renderW world
+_renderW :: GuiWorld -> Picture
+_renderW world
     = Pictures [renderable, dragging]
     -- the proper alternative here is to iterate over zones rendering everything inside them
     -- can render debug info here as well
     where
        renderable =
-            Pictures $ map renderSprite
+            Pictures $ map _renderSprite
             $ IntMap.elems
             $ IntMap.intersectionWith (,) 
                 (world ^. objectStore . sprites) 
@@ -419,15 +447,15 @@ renderW world
        mpos = world ^. miscState . mouseCoords
        dragging =
             case _dragged (world ^. objectStore) of
-                Just i -> renderSprite  ( views (objectStore . sprites) (IntMap.! i) world
+                Just i -> _renderSprite  ( views (objectStore . sprites) (IntMap.! i) world
                                         , Location (mpos) (80,60) 
                                         )
                 Nothing -> Blank
 
 -- Will need a way to turn a location into coordinates
 -- will be made obsolete when zones come online
-renderSprite :: (Sprite, Location) -> Picture
-renderSprite ((Sprite pic), (Location pos _bbox))
+_renderSprite :: (Sprite, Location) -> Picture
+_renderSprite ((Sprite pic), (Location pos _bbox))
     = 
     let (px,py) = pos
         {-correctIdForSprite = error $ "tried to render sprite for: " ++ show pic
@@ -435,16 +463,14 @@ renderSprite ((Sprite pic), (Location pos _bbox))
     in
     Translate px py $ pic
 
--- not correct way to render something in a zone
-
--- this will iterate over objects contained by zone and
--- display each displayable one at their location
--- (in order of depth)
--- then clip the resulting picture to its (Zone's) bounding box?
--- translate to zone position
--- and return the picture
-{-renderZone :: GuiWorld -> Zone -> Picture
-renderZone = undefined-}
+-- Do I need to:
+--     Clip pics to zone bounding box
+renderZones :: GuiWorld -> Picture
+renderZones world = 
+    let zs = world ^. zones
+        combine ((x,y), Sprite spr) = Translate x y spr
+    in
+    Pictures $ concatMap ((map combine) . render) zs
 
 renderCard :: Card -> Picture
 renderCard card
@@ -463,6 +489,28 @@ renderCard card
 
 emptyRender :: ObjectStore
 emptyRender = ObjectStore IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty Nothing
+
+-- need to register these things?
+playArea :: Thing
+playArea = Thing 
+            Nothing 
+            (Just $ Target playAreaHandleRelease) 
+            Nothing 
+            (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300))) 
+            (Just (400,300))
+playZone :: AllZones
+playZone = HSingleton (ExactPos (0,0) $ Just playArea)
+
+
+gameWindow :: Thing
+gameWindow = Thing
+            Nothing 
+            (Just $ Target gameWindowHandleRelease)
+            Nothing 
+            (Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)))
+            (Just (800,600))
+gameWindowZone :: AllZones
+gameWindowZone = HSingleton (ExactPos (0,0) $ Just gameWindow)
 
 -- these should each be things in a singletonZone. Likewise, dragging should be a singletonZone
 -- Hearts specific
@@ -546,4 +594,4 @@ gameWindowHandleRelease :: Trigger
 gameWindowHandleRelease world = return $ world & objectStore . dragged .~ Nothing
  
 emptyWorld :: Int -> Supply -> GuiWorld
-emptyWorld pos sup = GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0) Nothing Initializing sup) emptyRender (IntMap.empty) []
+emptyWorld pos sup = GuiWorld (MiscState RenderEmpty ["Initializing"] pos (0,0) Nothing Initializing sup) emptyRender (IntMap.empty) [gameWindowZone, playZone]
