@@ -283,6 +283,8 @@ eventHandle event world
                 where blah l a = case l of
                                     (x:xs) -> blah xs (x a)
                                     [] -> a
+            (SpecialKey KeyEsc, Up) 
+                -> return $ world & miscState . toSend .~ Just CtsDisconnect
             _   -> return $ world
 
 -- Generic Gui -- Gui Elements -- collision detection
