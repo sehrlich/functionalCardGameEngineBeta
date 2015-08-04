@@ -326,7 +326,7 @@ eventHandle event world
                                     (\i -> ((IntMap.! i) (world ^. thingWarehouse)) ^. reaction) 
                                     (catMaybes $ h:p:go:ez)
                 F.foldrM (releaseProcess) 
-                        (_addDebug ("len Should go off: " ++ (show $ length shouldGoOff)) world) 
+                        world --(_addDebug ("len Should go off: " ++ (show $ length shouldGoOff)) world) 
                         shouldGoOff
                 --blah (map ((=<<) ) shouldGoOff) $ return world
                 {-where blah l a = case l of
@@ -585,25 +585,9 @@ gameWindow = Thing
 -- Hearts specific
 initWorld :: GuiWorld -> GuiWorld
 initWorld =
-    (registerGenericSetID
-    -- The PlayArea
-        (Just $ Location ((0,0)) (400,300))
-        Nothing -- (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)))
-        {--| No particular action happens upon clicking in play area --}
-        (Just $ Clickable 0 return)
-        {--| If a card is being dragged, we try to play it as appropriate --}
-        (Just $ Target playAreaHandleRelease)
-    )
+    (registerThing (-5) playArea)
     . 
-    (registerGenericSetID
-     --    The game window
-        (Just $ Location ((0,0)) (800,600))
-        Nothing -- (Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)))
-        {--| No particular action happens upon clicking in window --}
-        (Just $ Clickable 0 return)
-        {--| If a card is being dragged, it snaps back to zone --}
-        (Just $ Target gameWindowHandleRelease)
-    )
+    (registerThing (-10) gameWindow)
     .
     (registerGenericSetID
     -- The Hand
