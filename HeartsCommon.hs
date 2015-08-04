@@ -1,3 +1,4 @@
+{-# LANGUAGE ParallelListComp #-}
 module HeartsCommon
     ( -- module PlayingCards
       PlayingCard(..)
@@ -102,8 +103,7 @@ shuffledDeck :: IO [Card] -- should take in idsupply
 shuffledDeck = do
     cards <- P.shuffledDeck
     ids <- return $ [100,102..] -- FIXME should be drawn from idsupply
-    return $ zipWith makeCard ids cards
-        where makeCard i c = Card (P.suit c) (P.rank c) i
+    return [Card (P.suit c) (P.rank c) i | c <-cards | i <- ids]
 
 -- This seems like an ideal thing to practice using quickCheck with
 -- namely, no matter what the trick is, should always have at least one valid play

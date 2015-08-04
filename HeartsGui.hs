@@ -1,4 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 module HeartsGui
     ( guiThread
     )
@@ -7,12 +9,15 @@ module HeartsGui
 import HeartsCommon
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
+import Data.Foldable (Foldable)
 import qualified Data.Foldable as F
 -- import Control.Concurrent.Async
 import Control.Concurrent.STM
 -- import Control.Concurrent.STM.TMVar
 
 import Control.Lens
+-- import qualified Control.Lens.Getter as LG
+-- import qualified Control.Lens.Setter as LS
 
 -- may want to consider
 -- idSupply Data.Unique.ID or monadSupply or
@@ -29,6 +34,7 @@ import Graphics.Gloss
 -- import qualified Graphics.Gloss.Data.Color as C
 import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 
+import Data.Maybe (catMaybes, maybeToList)
 -- Overview:
 -- Gui Stuff
 -- -- Thread
@@ -95,9 +101,11 @@ data MiscState = MiscState
  - http://www.haskellforall.com/2012/05/scrap-your-type-classes.html
  - for an alternative
  -}
+-- class Foldable z => HZone z where -- Switch to multiparameter type classes
 class HZone z where -- Switch to multiparameter type classes
     extract    :: z -> Int -> Maybe Thing
     -- extract isn't needed if we're storing all the things in the thing warehouse?
+    manage     :: z -> Thing -> z
     insert     :: Int -> GuiWorld -> z -> z -- should be w in general case 
                     -- also inserting by ID means we need to keep the thing warehouse
                     -- around, which seems wrong
@@ -105,19 +113,18 @@ class HZone z where -- Switch to multiparameter type classes
     clean      :: z -> z -- empties the zone
     allMems    :: z -> [Int] -- returns allMems
     checkPos   :: z -> Pos -> Maybe Int
+    --filterZ    :: z -> (Thing -> Bool) -> (Thing -> t) -> [t]
     -- checkPos returns the id of whatever is at that position
     -- it might make sense to allow it to return a (possibly empty) list instead
     -- ALSO it might be pretty to make this a lens, maybe with rename
+    -- idsAtPos
     render     :: z -> [(Pos, Sprite)]
 
 data ExactZone = ExactZone (IntMap Thing)
 -- can I make this a newtype instead?
-data SingletonZone          = ExactPos Pos (Maybe Int, Maybe Thing) -- Fix this to Maybe a pair?
+type SingletonZone          = Maybe Thing
                     -- | HandArea Pos
                     ---  Zone ManagementStyle Intmap Pos
-updatePos :: Pos -> SingletonZone -> SingletonZone
-updatePos p (ExactPos _ v) = ExactPos p v
-
 data AllZones = HSingleton SingletonZone
               | HExact ExactZone
 {-type ManagementStyle = GuiWorld -> Pos-}
@@ -131,8 +138,8 @@ insertNextPos = undefined
 type DebugInfo = [String]
 type Bbox          = (Float, Float)
 type Pos           = (Float, Float)
-data Sprite        = Sprite Picture Bbox-- RenderProcess if we need io to render?
-data Location      = Location Pos Bbox -- will want vector stuff to handle/change locations
+data Sprite        = Sprite Picture -- RenderProcess if we need io to render?
+data Location      = Location { _pos::Pos, _bbox::Bbox} -- will want vector stuff to handle/change locations
 
 -- TODO: should probably just remove depth outright
 -- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
@@ -177,16 +184,28 @@ data Thing = Thing
     , _reaction :: Maybe Target
     , _object :: Maybe Card
     , _sprite :: Maybe Sprite
+    , _location :: Maybe Location
+    , _objId :: Int
     }
 
+makeLenses ''Location
 makeLenses ''GuiWorld
 makeLenses ''MiscState
 makeLenses ''ObjectStore
 makeLenses ''ZoneList
--- makeLenses ''Thing
+makeLenses ''Thing
+
+{-zoneLens :: HZone z => Lens' z Thing
+zoneLens = lens zoneGetter zoneSetter
+            where 
+                zoneGetter z t = extract z (t ^. objId)
+                zoneSetter z t = manage z (t ^. objId)-}
+    
+                
 
 instance HZone ExactZone where
     extract    (ExactZone z) i = IntMap.lookup i z
+    manage (ExactZone z) t = ExactZone $ IntMap.insert (t ^. objId) t z
     insert i w (ExactZone z)   = 
         case (w ^. thingWarehouse & IntMap.lookup i) of -- should set pos to (w ^. miscState . mouseCoords)
             Just t -> ExactZone $ IntMap.insert i t z
@@ -194,19 +213,37 @@ instance HZone ExactZone where
     remove i (ExactZone z)     = ExactZone $ IntMap.delete i z
     clean _z                   = ExactZone $ IntMap.empty
     allMems (ExactZone z)      = IntMap.keys z
-    checkPos _z _p             = error "checkPos not implemented"
-    render _z = error "render not implemented"
+    checkPos _z _p             = Nothing-- error "checkPos not implemented"
+    render _z                  = []-- error "render not implemented"
 
 instance HZone SingletonZone where
-    extract (ExactPos _  (_, t)) _i = t -- should check id matches
+    extract = const -- should check id matches
+    manage _z t = Just t
     insert i w _z = -- should we reject if zone is full?
-        ExactPos (w ^. miscState . mouseCoords) (Just i, views thingWarehouse (IntMap.lookup i) w)
+        --(w ^. miscState . mouseCoords) 
+        (views thingWarehouse (IntMap.lookup i) w)
     remove _i z = z
-    clean (ExactPos p _) = ExactPos p (Nothing, Nothing)
+    clean (_) = Nothing
     allMems _ = []
-    checkPos _z _p = Nothing
-    render (ExactPos p (_,t)) = maybe [] ((:[]). ((,) p)) $ maybe Nothing _sprite t
+    checkPos (t) cpos = do
+        obj <- t
+        loc <- _location obj
+        if (isInRegion cpos loc)
+        then Just $ _objId obj
+        else Nothing
+    render z = maybeToList $ do
+        t <- z
+        spr <- t ^. sprite
+        loc <- t ^. location
+        let p = _pos loc
+        return (p, spr)
     -- should be able to simplify render by using prisms
+
+updatePos :: Pos -> SingletonZone -> SingletonZone
+updatePos p z = do
+        t <- z
+        loc <- t ^. location
+        return $ t & location .~ (Just $ loc{_pos = p} )
 
 instance HZone AllZones where
     extract (HExact z) i = extract z i
@@ -229,7 +266,7 @@ _addDebug s w = w & miscState . dbgInfo %~ (s:)
 
 
 guiThread :: TMVar ServerToClient -> TMVar ClientToServer -> Int -> IO ()
-guiThread inbox outbox pos
+guiThread inbox outbox playerPos
     = do
         -- server should be passing supply, probably in intiatialization method
         idSup <- newSupply
@@ -237,7 +274,7 @@ guiThread inbox outbox pos
             window
             white			 -- background color
             100              -- steps per second
-            (initWorld $ emptyWorld pos idSup) -- world
+            (initWorld $ emptyWorld playerPos idSup) -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             timeHandle       -- time update
@@ -261,28 +298,40 @@ eventHandle event world
             (MouseButton _, Down)
                 ->
                 -- register the click with an object (clickable)
-                let (_d, action) = IntMap.foldr cmpDepth (-1, return)
+                let (_d, clickAction) = IntMap.foldr cmpDepth (-1, return)
                                     $ IntMap.intersection (world ^. objectStore . clickables)
                                     $ IntMap.filter (isInRegion mpos)
                                     $ world ^. objectStore . locations
                     cmpDepth z (d, a) = let d' = depth z in if d' > d then (d', clickProcess z) else (d, a)
                 -- select the object with highest depth, and run its on click
-                in action world 
+                in clickAction world 
             (MouseButton _, Up)
                 -> do
-                let shouldGoOff = reverse
+                {-let shouldGoOff = reverse
                         $ map releaseProcess
                         $ IntMap.elems
                         $ IntMap.intersection (world ^. objectStore . targets)
                         $ IntMap.filter (isInRegion mpos)
-                        $ world ^. objectStore . locations
+                        $ world ^. objectStore . locations-}
                 -- TODO run through should go off, move dragging effects to targets, i.e. can be released here
                 -- if only in generic background target, have sensible move back animation
                 -- give this the proper name rather than blah
-                blah (map ((=<<) ) shouldGoOff) $ return world
-                where blah l a = case l of
+                -- world ^.. zones 
+                let h =  mpos & (checkPos $ world ^. zones . handZone)
+                let p =  mpos & (checkPos $ world ^. zones . playZone)
+                let go = mpos & (checkPos $ world ^. zones . guiobjects)
+                let ez = fmap (flip checkPos mpos) $ world ^. zones . extraZones
+                
+                let shouldGoOff = catMaybes $ map 
+                                    (\i -> ((IntMap.! i) (world ^. thingWarehouse)) ^. reaction) 
+                                    (catMaybes $ h:p:go:ez)
+                F.foldrM (releaseProcess) 
+                        (_addDebug ("len Should go off: " ++ (show $ length shouldGoOff)) world) 
+                        shouldGoOff
+                --blah (map ((=<<) ) shouldGoOff) $ return world
+                {-where blah l a = case l of
                                     (x:xs) -> blah xs (x a)
-                                    [] -> a
+                                    [] -> a-}
             (SpecialKey KeyEsc, Up) 
                 -> return $ world & miscState . toSend .~ Just CtsDisconnect
             _   -> return $ world
@@ -326,12 +375,12 @@ processMessage messageReceived world =
     Nothing ->
         case world ^. miscState . current of
         SendCard c   -> unregisterId (_id c) $
-    -- use prism to remove Just
+        -- use prism to remove Just
             world & miscState . toSend .~ Just (CtsMove c) & miscState . current .~ Waiting
         PassNow cs   -> 
             -- TODO switch flip with &
             flip (Z.foldr (unregisterId . _id)) cs $
-    -- use prism to remove Just
+            -- use prism to remove Just
             world & miscState . toSend .~ Just (CtsPassSelection cs) & miscState . current .~ Waiting
         
         Exiting         -> undefined-- send CTS terminate unless we just recieved it?
@@ -380,7 +429,7 @@ registerThing i t world = world & thingWarehouse %~ IntMap.insert i t
 registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
 registerGeneric idNo mLoc mSpr mZon mTar world
     =
-    let t = Thing mZon mTar Nothing mSpr 
+    let t = Thing mZon mTar Nothing mSpr mLoc idNo
     in 
     world
     & objectStore . clickables %~ IntMap.alter (const mZon) idNo
@@ -417,10 +466,10 @@ registerCard pos card world
         cid = _id card
         click w = over (zones . draggingZone) (insert cid w) w
         c   = Clickable cid $ return . ((set (objectStore . dragged) (Just cid)) . click) -- . (over (zones . draggingZone) (insert cid))
-        s   = Sprite        (renderCard card) (80,60)
+        s   = Sprite        (renderCard card)
         l   = Location  pos (80,60)
-        thing = Thing (Just c) Nothing (Just card) (Just s)
-        zone = ExactPos pos (Just cid , Just thing)
+        thing = Thing (Just c) Nothing (Just card) (Just s) (Just l) cid
+        zone = Just thing
     in
     -- can I use better lens magic for this?
     world
@@ -449,6 +498,7 @@ drawWorld world
                       , renderZones world
                       ]
 
+-- Old rendering
 -- If I moved dragged into an animtions record then I'll either
 -- need to make this take the whole world, or, more plausibly,
 -- have a renderAnim separate from renderStatic or something
@@ -476,9 +526,9 @@ _renderW world
 -- Will need a way to turn a location into coordinates
 -- will be made obsolete when zones come online
 _renderSprite :: (Sprite, Location) -> Picture
-_renderSprite ((Sprite pic _box), (Location pos _bbox))
+_renderSprite ((Sprite pic), (Location p _bbox))
     = 
-    let (px,py) = pos
+    let (px,py) = p
         {-correctIdForSprite = error $ "tried to render sprite for: " ++ show pic
         (px,py) = maybe (error "no position") id $ extractPos zone correctIdForSprite-}
     in
@@ -489,7 +539,7 @@ _renderSprite ((Sprite pic _box), (Location pos _bbox))
 renderZones :: GuiWorld -> Picture
 renderZones world = 
     let zs = world ^. zones . extraZones -- change to traversal? 
-        combine ((x,y), (Sprite spr _bbox)) = Translate x y spr
+        combine ((x,y), (Sprite spr )) = Translate x y spr
         tempDrag = world ^. zones . draggingZone & (map combine) . render
     in
     Pictures $ (tempDrag ++ ) $ concatMap ((map combine) . render) zs
@@ -518,23 +568,19 @@ playArea = Thing
             Nothing 
             (Just $ Target playAreaHandleRelease) 
             Nothing 
-            $ Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)) (400,300)
-
-playzone :: SingletonZone
-playzone = ExactPos (0,0) $ (Nothing, Just playArea)
-
+            (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)) )
+            (Just $ Location (0,0) (400,300))
+            (-5)
 
 gameWindow :: Thing
 gameWindow = Thing
             Nothing 
             (Just $ Target gameWindowHandleRelease)
             Nothing 
-            $ Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)) (800,600)
-gameWindowZone :: SingletonZone
-gameWindowZone = ExactPos (0,0) $ (Nothing, Just gameWindow)
+            (Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)) )
+            (Just $ Location (0,0) (800,600))
+            (-10)
 
-dragZone :: SingletonZone
-dragZone = ExactPos (0,0) (Nothing, Nothing)
 -- these should each be things in a singletonZone. Likewise, dragging should be a singletonZone
 -- Hearts specific
 initWorld :: GuiWorld -> GuiWorld
@@ -562,7 +608,7 @@ initWorld =
     (registerGenericSetID
     -- The Hand
         (Just $ Location ((0,-200)) (800,100))
-        (Just $ Sprite (Color (makeColor 0.4 0.7 0.2 0.5) $ rectangleSolid (800) (100)) (800,100))
+        (Just $ Sprite (Color (makeColor 0.4 0.7 0.2 0.5) $ rectangleSolid (800) (100)) )
         {--| No particular action happens upon clicking in window --}
         (Just $ Clickable 0 return)
         {--| If a card is being dragged, we try to play it as appropriate --}
@@ -632,7 +678,7 @@ defaultZL :: ZoneList
 defaultZL = ZoneList
     { _handZone = emptyExactZone
     , _playZone = emptyExactZone
-    , _draggingZone = dragZone
+    , _draggingZone = Nothing
     , _guiobjects = emptyExactZone
-    , _extraZones = [HSingleton gameWindowZone, HSingleton playzone]
+    , _extraZones = [HSingleton $ Just gameWindow, HSingleton $ Just playArea]
     }
