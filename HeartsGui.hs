@@ -59,7 +59,6 @@ import Data.Maybe (catMaybes, maybeToList, listToMaybe, fromMaybe)
 -- Need some Gui Info such as cursor position
 data GuiWorld = GuiWorld
     { _miscState  :: MiscState
-    , _thingWarehouse :: IntMap Thing
     , _zones :: ZoneList
     }
 
@@ -103,15 +102,14 @@ class HZone z where -- Switch to multiparameter type classes
     extract    :: z -> Int -> Maybe Thing
     -- extract isn't needed if we're storing all the things in the thing warehouse?
     manage     :: Thing -> z -> z
-    insert     :: Int -> GuiWorld -> z -> z -- should be w in general case 
-                    -- also inserting by ID means we need to keep the thing warehouse
-                    -- around, which seems wrong
     remove     :: Int -> z -> z
     clean      :: z -> z -- empties the zone
     allMems    :: z -> [Int] -- returns allMems
     checkPos   :: z -> Pos -> Maybe Int
     checkAll   :: z -> Pos -> [Int]
     checkAllT  :: z -> Pos -> [Thing]
+    update     :: z -> z
+    update = id
     --filterZ    :: z -> (Thing -> Bool) -> (Thing -> t) -> [t]
     -- checkPos returns the id of whatever is at that position
     -- it might make sense to allow it to return a (possibly empty) list instead
@@ -145,7 +143,7 @@ data Location      = Location { _pos::Pos, _bbox::Bbox} -- will want vector stuf
 -- or oranized by Zone or something
 type Depth         = Int -- really more like height in that lower numbers are beneath higher numbers
 data Clickable     = Clickable
-                    { depth        :: Depth
+                    { _depth       :: Depth
                     , clickProcess :: Trigger
                     }
 data Target        = Target
@@ -178,23 +176,9 @@ makeLenses ''MiscState
 makeLenses ''ZoneList
 makeLenses ''Thing
 
-{-
-zoneLens :: HZone z => Lens' z Thing
-zoneLens = lens zoneGetter zoneSetter
-            where 
-                zoneGetter z t = extract z (t ^. objId)
-                zoneSetter z t = manage z (t ^. objId)
--}
-    
-                
-
 instance HZone ExactZone where
     extract    (ExactZone z) i = IntMap.lookup i z
-    manage t (ExactZone z) = ExactZone $ IntMap.insert (t ^. objId) t z
-    insert i w (ExactZone z)   = 
-        case (w ^. thingWarehouse & IntMap.lookup i) of -- should set pos to (w ^. miscState . mouseCoords)
-            Just t -> ExactZone $ IntMap.insert i t z
-            Nothing -> ExactZone z
+    manage t (ExactZone z)     = ExactZone $ IntMap.insert (t ^. objId) t z
     remove i (ExactZone z)     = ExactZone $ IntMap.delete i z
     clean _z                   = ExactZone $ IntMap.empty
     allMems (ExactZone z)      = IntMap.keys z
@@ -223,9 +207,6 @@ instance HZone ExactZone where
 instance HZone SingletonZone where
     extract = const -- should check id matches
     manage t _z = Just t
-    insert i w _z = -- should we reject if zone is full?
-        --(w ^. miscState . mouseCoords) 
-        (views thingWarehouse (IntMap.lookup i) w)
     remove _i z = z
     clean (_) = Nothing
     allMems _ = []
@@ -256,13 +237,12 @@ updatePos p z = do
         loc <- t ^. location
         return $ t & location .~ (Just $ loc{_pos = p} )
 
+-- There has got to be a better way to do this...
 instance HZone AllZones where
     extract (HExact z) i = extract z i
     extract (HSingleton z) i = extract z i
     manage t (HExact z) = HExact $ manage t z
     manage t (HSingleton z) = HSingleton $ manage t z
-    insert i w (HExact z) = HExact $ insert i w z 
-    insert i w (HSingleton z) = HSingleton $ insert i w z 
     remove i (HExact z) = HExact $ remove i z 
     remove i (HSingleton z) = HSingleton $ remove i z 
     clean (HExact z) = HExact $ clean z 
@@ -292,7 +272,7 @@ guiThread inbox outbox playerPos
             window
             white			 -- background color
             100              -- steps per second
-            (initWorld $ emptyWorld playerPos idSup) -- world
+            (emptyWorld playerPos idSup) -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
             timeHandle       -- time update
@@ -320,7 +300,7 @@ eventHandle event world
                 let go = mpos & (checkAllT $ world ^. zones . guiobjects)
                 -- let ez = fmap (flip checkAllT mpos) $ world ^. zones . extraZones
                 
-                -- should make zones foldable so that this doesn't need to go to thingWarehouse
+                -- should make zones foldable
                 let trigger = listToMaybe $ map clickProcess $ catMaybes $ 
                                 map (^. action) (concat  [h,p,go]) -- ,ez
                 fromMaybe return trigger world
@@ -332,7 +312,7 @@ eventHandle event world
                 let go = mpos & (checkAllT $ world ^. zones . guiobjects)
                 -- let ez = concatMap (flip checkAll mpos) $ world ^. zones . extraZones
                 
-                -- should make zones foldable so that this doesn't need to go to thingWarehouse
+                -- should make zones foldable
                 let shouldGoOff = catMaybes $ map 
                                     ( ^. reaction) 
                                     (concat [h,p,go])
@@ -366,6 +346,9 @@ processMessage messageReceived world =
     -- use prism to remove Just
     let acknowledged = world & miscState . toSend  .~ Just CtsAcknowledge 
                              & miscState . current .~ Waiting
+        cleaned = acknowledged
+                & zones . playZone %~ clean
+                & zones . handZone %~ clean
     in
     case messageReceived of
     Just (StcGameStart i) -> 
@@ -374,21 +357,24 @@ processMessage messageReceived world =
         acknowledged & miscState . current .~ Exiting
     Just (StcGetPassSelection _ _) -> 
         world & miscState . current .~ (CollectPass Z.empty)
-    Just (StcWasPassed _) -> acknowledged -- soon these will be registered to hand zone
+    Just (StcWasPassed _) -> cleaned -- acknowledged & zones . handZone %~ clean-- soon these will be registered to hand zone
     Just (StcGetMove hand info) -> 
         world & miscState . current .~ (SelectCard hand info)
     Just (StcRender rinfo ) -> registerWorld rinfo acknowledged  -- soon we'll just register the trick
-    Just StcCleanTrick -> unregisterTrick acknowledged -- also unregistering shit?
+    Just StcCleanTrick -> cleaned
     Nothing ->
         case world ^. miscState . current of
-        SendCard c   -> unregisterId (_id c) $
+        SendCard c   -> -- unregisterId (_id c) $
         -- use prism to remove Just
             world & miscState . toSend .~ Just (CtsMove c) & miscState . current .~ Waiting
         PassNow cs   -> 
             -- TODO switch flip with &
-            flip (Z.foldr (unregisterId . _id)) cs $
+            -- flip (Z.foldr (unregisterId . _id)) cs $
+            -- WILL NEED TO clear the play area
             -- use prism to remove Just
-            world & miscState . toSend .~ Just (CtsPassSelection cs) & miscState . current .~ Waiting
+            world & miscState . toSend .~ Just (CtsPassSelection cs) 
+                  & miscState . current .~ Waiting
+                  & zones . playZone  %~ clean
         
         Exiting         -> undefined-- send CTS terminate unless we just recieved it?
         Initializing    -> world
@@ -417,7 +403,6 @@ registerHand :: Hand -> GuiWorld -> GuiWorld
 registerHand hand world =
     S.foldrWithIndex rgstr world (orderPile hand)
     where rgstr i c w = w & zones . handZone %~ manage (crd i c)
-                            & thingWarehouse %~ IntMap.insert (crd i c ^. objId) (crd i c)
           loc i = Location (-351+ 55*(fromIntegral i), -200 ) (80,60)
           crd i c = cardThing c & location .~ (Just $ loc i)
 
@@ -425,72 +410,25 @@ registerTrick :: Trick -> GuiWorld -> GuiWorld
 registerTrick trick world =
     S.foldrWithIndex rgstr world trick 
     where rgstr i c w = w & zones . playZone %~ manage (crd i c)
-                            & thingWarehouse %~ IntMap.insert (crd i c ^. objId) (crd i c)
           loc i = Location (-351+ 55*(fromIntegral i), 200 ) (80,60)
           crd i c = cardThing c & location .~ (Just $ loc i)
-
-{- Generic Gui elements -}
-_registerGenericSetID :: Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
-_registerGenericSetID mLoc mSpr mZon mTar world
-    =
-    let (idNo, newSup) = freshId $ world ^. miscState .idSupply
-    in _registerGeneric idNo mLoc mSpr mZon mTar $ world & miscState . idSupply .~ newSup
-
-registerThing :: Int -> Thing -> GuiWorld -> GuiWorld -- do we want an initial zone?
-registerThing i t world = world & thingWarehouse %~ IntMap.insert i t
-
-_registerGeneric :: Int -> Maybe Location -> Maybe Sprite -> Maybe Clickable -> Maybe Target -> GuiWorld -> GuiWorld
-_registerGeneric idNo mLoc mSpr mZon mTar world
-    =
-    let t = Thing mZon mTar Nothing mSpr mLoc idNo
-    in 
-    world
-    & registerThing idNo t
-
-unregisterTrick :: GuiWorld -> GuiWorld
-unregisterTrick world =
-    case world ^. miscState . receivedInfo of 
-        RenderInRound _hand trick _scores -> world & zones . playZone %~ clean
-        -- F.foldr (unregisterId . _id) world trick         
-        _ -> error $ "Called unregisterTrick while not inRound"
-    
-
-unregisterId :: Int -> GuiWorld -> GuiWorld
-unregisterId i world
-    =
-    -- should use a fold or traverse or some other clever lens thing
-    world
-    & thingWarehouse %~ IntMap.delete i
-    -- probably need to broadcast delete over zones
 
 {- Generic Gui elements -}
 cardThing :: Card -> Thing
 cardThing card 
     = 
     let cid = _id card
-        click w = over (zones . draggingZone) (insert cid w) w
+        click w = -- over (zones . draggingZone) (insert cid w) w -- switch to manage
+            let obj = extract (w ^. zones . handZone) cid
+            in  
+            case obj of
+                Just cd -> w & zones . draggingZone %~ manage cd
+                Nothing -> w
         c   = Clickable cid $ return . click
         s   = Sprite (renderCard card)
         -- l   = Nothing-- Location  p (80,60)
     in Thing (Just c) Nothing (Just card) (Just s) Nothing cid
 
-_registerCard :: Pos -> Card -> GuiWorld -> GuiWorld
-_registerCard p card world
-    =
-    let 
-        cid = _id card
-        click w = over (zones . draggingZone) (insert cid w) w
-        c   = Clickable cid $ return . click 
-            -- . (over (zones . draggingZone) (insert cid))
-        s   = Sprite        (renderCard card)
-        l   = Location  p (80,60)
-        thing = Thing (Just c) Nothing (Just card) (Just s) (Just l) cid
-        zone = Just thing
-    in
-    world
-    & thingWarehouse %~ IntMap.insert cid thing
-    & zones . extraZones  %~ (HSingleton zone :)
-    -- & zones . draggingZone %~ insert cid world
 
 {-registerButton :: Location -> Sprite -> Trigger -> GuiWorld -> GuiWorld-}
 {--- registerButton = undefined -- needs to actually register button-}
@@ -538,7 +476,6 @@ renderCard card
                     Hearts -> Color red
                     Diamonds -> Color red
 
--- need to register these things?
 playArea :: Thing
 playArea = Thing 
             Nothing 
@@ -565,14 +502,6 @@ handBackground = Thing
                 (Just $ Sprite (Color (makeColor 0.4 0.7 0.2 0.5) $ rectangleSolid (800) (100)) )
                 (Just $ Location ((0,-200)) (800,100))
                 (-42)
-
-initWorld :: GuiWorld -> GuiWorld
-initWorld =
-    (registerThing (-5) playArea)
-    . 
-    (registerThing (-10) gameWindow)
-    .
-    (registerThing (-42) handBackground)
 
 playAreaHandleRelease :: Trigger
 playAreaHandleRelease world 
@@ -602,8 +531,9 @@ processCardRelease thing world =
                     -- TODO FIXME implement button for the switch
                     & zones . draggingZone %~ clean
                     & miscState   . dbgInfo   %~ ("Passing this card. ":)
-                    -- take card out of handzone
-                    -- & zones . handzone %~ remove i
+                    -- take card out of handZone
+                    & zones . handZone %~ remove (thing ^. objId)
+                    & zones . playZone %~ manage thing
                 else world 
                     & miscState   . dbgInfo   %~ ("cannot add card to passing set ":)
 
@@ -611,7 +541,8 @@ processCardRelease thing world =
                 if isValidPlay hand info card
                 then world
                         & miscState   . current   .~ SendCard card
-                        & zones . draggingZone %~ clean
+                        & zones . handZone %~ remove (thing ^. objId)
+                        & zones . playZone %~ manage thing
                 else world 
                         & miscState   . dbgInfo   %~ ("Not valid play. ":)
 
@@ -621,12 +552,10 @@ processCardRelease thing world =
 
 gameWindowHandleRelease :: Trigger
 gameWindowHandleRelease world = 
-    return $ world 
-        & zones . draggingZone %~ clean
-        & miscState . dbgInfo %~ ("window release " :)
+    return $ world & zones . draggingZone %~ clean
  
 emptyWorld :: Int -> Supply -> GuiWorld
-emptyWorld p sup = GuiWorld (MiscState RenderEmpty ["Initializing"] p (0,0) Nothing Initializing sup) (IntMap.empty)  defaultZL
+emptyWorld p sup = GuiWorld (MiscState RenderEmpty ["Initializing"] p (0,0) Nothing Initializing sup) defaultZL
 
 
 emptyExactZone :: ExactZone
