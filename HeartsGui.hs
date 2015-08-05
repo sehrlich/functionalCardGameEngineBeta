@@ -177,27 +177,27 @@ makeLenses ''ZoneList
 makeLenses ''Thing
 
 instance HZone ExactZone where
-    extract    (ExactZone z) i = IntMap.lookup i z
-    manage t (ExactZone z)     = ExactZone $ IntMap.insert (t ^. objId) t z
-    remove i (ExactZone z)     = ExactZone $ IntMap.delete i z
-    clean _z                   = ExactZone $ IntMap.empty
-    allMems (ExactZone z)      = IntMap.keys z
-    checkAllT (ExactZone z) p = 
+    extract  (ExactZone z) i  = IntMap.lookup i z
+    manage t (ExactZone z)    = ExactZone $ IntMap.insert (t ^. objId) t z
+    remove i (ExactZone z)    = ExactZone $ IntMap.delete i z
+    clean _z                  = ExactZone $ IntMap.empty
+    allMems  (ExactZone z)    = IntMap.keys z
+    checkAllT (ExactZone z) p =
         catMaybes [ checkP t | t <- IntMap.elems z]
         where checkP t = do
                         loc <- t ^. location 
                         if isInRegion p loc
                         then return $ t
                         else Nothing
-    checkAll (ExactZone z) p = 
+    checkAll (ExactZone z) p  =
         catMaybes [ checkP t | t <- IntMap.elems z]
         where checkP t = do
                         loc <- t ^. location 
                         if isInRegion p loc
                         then return $ t ^. objId
                         else Nothing
-    checkPos z p = listToMaybe $ checkAll z p
-    render (ExactZone z) = 
+    checkPos z p              = listToMaybe $ checkAll z p
+    render   (ExactZone z)    = 
         catMaybes [ info t | t <- IntMap.elems z]
         where  info t = do
                         spr <- t ^. sprite
@@ -205,12 +205,12 @@ instance HZone ExactZone where
                         return $ (loc ^. pos, spr) 
 
 instance HZone SingletonZone where
-    extract = const -- should check id matches
-    manage t _z = Just t
-    remove _i z = z
-    clean (_) = Nothing
-    allMems _ = []
-    checkAll z p = maybeToList $ checkPos z p
+    extract       = const -- should check id matches
+    manage t _z   = Just t
+    remove _i z   = z
+    clean (_)     = Nothing
+    allMems _     = []
+    checkAll z p  = maybeToList $ checkPos z p
     checkAllT t p = maybeToList $ do
         obj <- t
         loc <- _location obj
@@ -275,9 +275,8 @@ guiThread inbox outbox playerPos
             (emptyWorld playerPos idSup) -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
-            timeHandle       -- time update
-    where timeHandle = (commHandle inbox outbox)
-          window = (InWindow
+            (commHandle inbox outbox) -- time update
+    where window = (InWindow
                    "Gloss" 	    -- window title
                                 -- title fixed for xmonad
                    (800, 600)   -- window size
@@ -289,8 +288,9 @@ eventHandle event world
     = case event of
     EventResize _ws -> return $ world
     EventMotion mpos --(mx,my)
-        -> return $ world & miscState . mouseCoords .~ mpos
-                    & zones . draggingZone %~ updatePos mpos
+        -> return $ world 
+                    & miscState . mouseCoords  .~ mpos
+                    & zones     . draggingZone %~ updatePos mpos
     EventKey k ks _mod mpos
         -> case (k, ks) of
             (MouseButton _, Down)
@@ -334,55 +334,47 @@ isInRegion (mx,my) (Location ((cx,cy)) (bx,by)) =
 commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> GuiWorld -> IO GuiWorld
 commHandle inbox outbox _t world
     = do
-    -- check inbox
     messageReceived <- atomically $ tryTakeTMVar inbox
-    let world' = processMessage messageReceived world
-    let outMessage = world' ^. miscState . toSend
-    maybe (return ()) (atomically . (putTMVar outbox)) outMessage
-    return $ world' & miscState . toSend .~ Nothing
+    let world'      = processMessage messageReceived world
+    let outMessage  = world' ^. miscState . toSend
+    maybe           (return ()) (atomically . (putTMVar outbox)) outMessage
+    return          $ world' & miscState . toSend .~ Nothing
 
 processMessage :: Maybe ServerToClient -> GuiWorld -> GuiWorld
 processMessage messageReceived world =
     -- use prism to remove Just
-    let acknowledged = world & miscState . toSend  .~ Just CtsAcknowledge 
-                             & miscState . current .~ Waiting
-        cleaned = acknowledged
+    let acknowledged = 
+            world 
+                & miscState . toSend  .~ Just CtsAcknowledge 
+                & miscState . current .~ Waiting
+        cleaned = 
+            acknowledged
                 & zones . playZone %~ clean
                 & zones . handZone %~ clean
     in
     case messageReceived of
-    Just (StcGameStart i) -> 
-        acknowledged & miscState . position .~ i
-    Just StcGameOver -> 
-        acknowledged & miscState . current .~ Exiting
-    Just (StcGetPassSelection _ _) -> 
-        world & miscState . current .~ (CollectPass Z.empty)
-    Just (StcWasPassed _) -> cleaned -- acknowledged & zones . handZone %~ clean-- soon these will be registered to hand zone
-    Just (StcGetMove hand info) -> 
-        world & miscState . current .~ (SelectCard hand info)
-    Just (StcRender rinfo ) -> registerWorld rinfo acknowledged  -- soon we'll just register the trick
-    Just StcCleanTrick -> cleaned
+    Just (StcGameStart i)          -> acknowledged & miscState . position .~ i
+    Just StcGameOver               -> acknowledged & miscState . current .~ Exiting
+    Just (StcGetPassSelection _ _) -> world        & miscState . current .~ (CollectPass Z.empty)
+    Just (StcWasPassed _)          -> cleaned ---- maybe keep track of info intelligently
+    Just (StcGetMove hand info)    -> world        & miscState . current .~ (SelectCard hand info)
+    Just (StcRender rinfo )        -> registerWorld rinfo acknowledged  -- soon we'll just register the trick
+    Just StcCleanTrick             -> cleaned
     Nothing ->
         case world ^. miscState . current of
-        SendCard c   -> -- unregisterId (_id c) $
-        -- use prism to remove Just
-            world & miscState . toSend .~ Just (CtsMove c) & miscState . current .~ Waiting
-        PassNow cs   -> 
-            -- TODO switch flip with &
-            -- flip (Z.foldr (unregisterId . _id)) cs $
-            -- WILL NEED TO clear the play area
-            -- use prism to remove Just
-            world & miscState . toSend .~ Just (CtsPassSelection cs) 
-                  & miscState . current .~ Waiting
-                  & zones . playZone  %~ clean
+            -- consider using prism to remove Just
+        SendCard c      -> world & miscState . toSend .~ Just (CtsMove c) 
+                                 & miscState . current .~ Waiting
+        PassNow cs      -> world & miscState . toSend .~ Just (CtsPassSelection cs) 
+                                 & miscState . current .~ Waiting
+                                 & zones . playZone  %~ clean
         
         Exiting         -> undefined-- send CTS terminate unless we just recieved it?
         Initializing    -> world
 
-        -- don't need to do anything for waiting, selectcard, collectpass
         Waiting         -> world
         SelectCard _ _  -> world
-        CollectPass _cs -> world -- temporary check to see if 3 cards then switch
+        CollectPass _cs -> world
 
 
 {- Register nonsense takes guiworld to guiworld -}
@@ -413,20 +405,15 @@ registerTrick trick world =
           loc i = Location (-351+ 55*(fromIntegral i), 200 ) (80,60)
           crd i c = cardThing c & location .~ (Just $ loc i)
 
-{- Generic Gui elements -}
 cardThing :: Card -> Thing
 cardThing card 
     = 
     let cid = _id card
-        click w = -- over (zones . draggingZone) (insert cid w) w -- switch to manage
-            let obj = extract (w ^. zones . handZone) cid
-            in  
-            case obj of
-                Just cd -> w & zones . draggingZone %~ manage cd
-                Nothing -> w
+        click w = case extract (w ^. zones . handZone) cid of
+                    Just cd -> w & zones . draggingZone %~ manage cd
+                    Nothing -> w
         c   = Clickable cid $ return . click
         s   = Sprite (renderCard card)
-        -- l   = Nothing-- Location  p (80,60)
     in Thing (Just c) Nothing (Just card) (Just s) Nothing cid
 
 
@@ -438,12 +425,10 @@ cardThing card
 drawWorld :: GuiWorld -> IO Picture
 drawWorld world
     = do
-    -- render debugInfo can now move this into render
     let debugInfo = world ^. miscState . dbgInfo
         dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
     -- will also want to render in depth order
     return $ Pictures [ dbg
-                      -- , renderW world
                       , renderZones world
                       ]
 
@@ -540,9 +525,9 @@ processCardRelease thing world =
             SelectCard hand info  ->
                 if isValidPlay hand info card
                 then world
-                        & miscState   . current   .~ SendCard card
                         & zones . handZone %~ remove (thing ^. objId)
                         & zones . playZone %~ manage thing
+                        & miscState   . current   .~ SendCard card
                 else world 
                         & miscState   . dbgInfo   %~ ("Not valid play. ":)
 
