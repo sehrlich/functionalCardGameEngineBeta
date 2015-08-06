@@ -7,6 +7,7 @@ module HeartsGui
     where
 
 import HeartsCommon
+import GuiZones
 import qualified Data.Set as Z
 import qualified Data.Sequence as S
 -- import Data.Foldable (Foldable)
@@ -16,6 +17,9 @@ import Control.Concurrent.STM
 -- import Control.Concurrent.STM.TMVar
 
 import Control.Lens
+-- lens operators can be referred to from 
+-- https://github.com/ekmett/lens/wiki/Operators
+-- https://www.fpcomplete.com/school/to-infinity-and-beyond/pick-of-the-week/a-little-lens-starter-tutorial#actually-there-are-a-whole-lot-of-operators-in-lens---over-100
 
 -- may want to consider
 -- idSupply Data.Unique.ID or monadSupply or
@@ -66,8 +70,8 @@ data ZoneList = ZoneList
     { _handZone :: ExactZone -- managedzone
     , _playZone :: ExactZone -- managedzone
     , _draggingZone :: SingletonZone
-    , _guiobjects :: ExactZone
-    , _extraZones :: [AllZones]
+    , _guiObjects :: ExactZone
+    -- , _extraZones :: [AllZones]
     }
                 
 
@@ -97,10 +101,9 @@ data MiscState = MiscState
  - http://www.haskellforall.com/2012/05/scrap-your-type-classes.html
  - for an alternative
  -}
--- class Foldable z => HZone z where -- Switch to multiparameter type classes
-class HZone z where -- Switch to multiparameter type classes
+-- class Zone z => HZone z where 
+class Zone z => HZone z where 
     extract    :: z -> Int -> Maybe Thing
-    -- extract isn't needed if we're storing all the things in the thing warehouse?
     manage     :: Thing -> z -> z
     remove     :: Int -> z -> z
     clean      :: z -> z -- empties the zone
@@ -111,8 +114,6 @@ class HZone z where -- Switch to multiparameter type classes
     update     :: z -> z
     update = id
     --filterZ    :: z -> (Thing -> Bool) -> (Thing -> t) -> [t]
-    -- checkPos returns the id of whatever is at that position
-    -- it might make sense to allow it to return a (possibly empty) list instead
     -- ALSO it might be pretty to make this a lens, maybe with rename
     -- idsAtPos
     render     :: z -> [(Pos, Sprite)]
@@ -120,17 +121,8 @@ class HZone z where -- Switch to multiparameter type classes
 data ExactZone = ExactZone (IntMap Thing)
 -- can I make this a newtype instead?
 type SingletonZone          = Maybe Thing
-                    -- | HandArea Pos
-                    ---  Zone ManagementStyle Intmap Pos
 data AllZones = HSingleton SingletonZone
               | HExact ExactZone
-{-type ManagementStyle = GuiWorld -> Pos-}
-{-
-insertAtMousePos :: ManagementStyle
-insertAtMousePos gw = _mouseCoords $ _miscState gw
-insertNextPos :: ManagementStyle
-insertNextPos = undefined
--}
 
 type DebugInfo = [String]
 type Bbox          = (Float, Float)
@@ -297,7 +289,7 @@ eventHandle event world
                 -> do
                 let h =  mpos & (checkAllT $ world ^. zones . handZone)
                 let p =  mpos & (checkAllT $ world ^. zones . playZone)
-                let go = mpos & (checkAllT $ world ^. zones . guiobjects)
+                let go = mpos & (checkAllT $ world ^. zones . guiObjects)
                 -- let ez = fmap (flip checkAllT mpos) $ world ^. zones . extraZones
                 
                 -- should make zones foldable
@@ -309,7 +301,7 @@ eventHandle event world
                 -> do
                 let h =  mpos & (checkAllT $ world ^. zones . handZone)
                 let p =  mpos & (checkAllT $ world ^. zones . playZone)
-                let go = mpos & (checkAllT $ world ^. zones . guiobjects)
+                let go = mpos & (checkAllT $ world ^. zones . guiObjects)
                 -- let ez = concatMap (flip checkAll mpos) $ world ^. zones . extraZones
                 
                 -- should make zones foldable
@@ -440,7 +432,7 @@ renderZones world =
         combine ((x,y), (Sprite spr )) = Translate x y spr
         process z = map combine $ render z
         hz = world ^. zones . handZone
-        go = world ^. zones . guiobjects
+        go = world ^. zones . guiObjects
         pz = world ^. zones . playZone
         dz = world ^. zones . draggingZone
     in
@@ -551,6 +543,6 @@ defaultZL = ZoneList
     { _handZone = emptyExactZone
     , _playZone = emptyExactZone
     , _draggingZone = Nothing
-    , _guiobjects = emptyExactZone & manage playArea & manage gameWindow & manage handBackground
-    , _extraZones = []
+    , _guiObjects = emptyExactZone & manage playArea & manage gameWindow & manage handBackground
+    -- , _extraZones = []
     }

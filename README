@@ -1,18 +1,7 @@
 I'll be writing a bunch of card game variants and hope to eventually factor out an engine that's useful for quickly implenting new card games
-Current Status
+Current Status: Hearts is playable, no scoring info
 
 Front end
-    switch to using gui thread rather than text-based
-        -- * gui spawns text based thread and acts as a pipe -- * move render text to being printed on gui, but still
-        --     read moves from std input
-        -- * draw cards
-        -- * mouse interaction with cards
-        -- * let cards request interaction with target
-        -- * remove dependence on cli
-        * use lenses to clear up nested record updates
-        * disentagle depth/height from id
-        * display images in depth order
-        * display sensible text
     Medium/Long term wants for GUI
         sensible text boxes
         menus
@@ -23,43 +12,59 @@ Front end
         draw images/bitmaps
         sound and music stuff --- see Kevin Mcleod's site (Incompetech) for cc-type music
         threepenny gui backend (maybe switch between gloss and threepenny?)
-    Philosophy
-        Gui cannot draw anything the server doesn't tell it about (it may choose not to draw redundant info)
 Hearts
+    graphics:
     display cards in trick according to position
     display scores, pass left/right/across messages
+    display opp's hands as card backs
+        animate opps playing cards/sweeping cards off table
+        better card rendering
+    
+    usability:
     make button for passing/allow selection deselection
+        indicate whose turn it is
 
+    architecture:
+        managed zones, i.e. hand keeps track of card order and arranges cards appropriately (so don't need to reregister everything)
+        play zone has N,S,E,W positions
+
+        pull zone class into separate module
+        (possibly with basic gui constructor stuff,
+        something that can consume a protocol and produce something sensible)
+
+        make zones foldable, remove all the stupid zone functions
+        replace allzones with something not stupid
+
+        pass in idSupply, player position in relevant place
+        autogenerate ids for things without ids
+
+        use idSupply with shuffled cards rather than adhoc ids
+        
     maybe:
     -- move to mvc
-    -- rpc/servery thing,
     -- stop computing scores along the way and store tricks, then compute at round end
     -- ai can be better for testing (if can dodge trick, throw points. If can't win big)
-    -- revamp info with lenses
     -- quickCheck isValidPlay
     -- make some sort of monady thing that ensures player input is always validated
+
+
 Spades
 Klondike
     redo with gui (and maybe client server nonsense)
 
 Also separate out prototype client gui etc as playing cards is separated
 
-
+make everything cabal or stackage friendly
 logging and replay
 stuff for tutorials/scenarios
     scripted events
     messages
 menus
-zones
-    these are really data structures
-default ways of doing selection in a zone -- i.e. select and unselect until click done
-recognizing an object with an id we've seen before
-
 
 disentangle heartsGui from generic Gui stuff ala PlayingCards
     genericGui should have
         zones
         buttons
         setting up the gloss thread, inbox, outbox
-        registering stuff
+        -- registering stuff / generic things 
         generic rendering stuff

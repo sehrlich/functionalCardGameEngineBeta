@@ -38,6 +38,8 @@ import qualified Data.Set as Set
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 
+import Control.Concurrent.Supply
+
 data Effect = Effect (World -> World)
                 | GetInput
                 | NewTrick
@@ -99,10 +101,11 @@ computeWinner (TrickInfo started played scores broken) =
     in
         (winner, new_scores, broken')
 
-shuffledDeck :: IO [Card] -- should take in idsupply
-shuffledDeck = do
+shuffledDeck :: Supply -> IO [Card] -- should take in idsupply
+shuffledDeck sup = do
     cards <- P.shuffledDeck
-    ids <- return $ [100,102..] -- FIXME should be drawn from idsupply
+    let ids = F.toList $ S.unfoldr (return . freshId) sup
+    -- return $ [100,102..] -- FIXME should be drawn from idsupply
     return [Card (P.suit c) (P.rank c) i | c <-cards | i <- ids]
 
 -- This seems like an ideal thing to practice using quickCheck with

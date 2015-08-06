@@ -25,10 +25,13 @@ import Control.Concurrent.STM
 import qualified Control.Concurrent.Async as Async
 -- import Control.Distributed.Process
 
--- import Control.Concurrent.Supply
--- there's a reasonable chance we need this here and need to supply it to each child
+import Control.Concurrent.Supply
+-- we need to supply a splitsupply to each child
 
 -- I should add object ids here upon generating shuffled deck
+--
+-- Eventually main should start a server that recieves connections
+-- when it gets enough to start a game, it splits off a separate thread to host the game
 main :: IO ()
 main = do
         p0 <- constructGUIPlayer 0
@@ -92,7 +95,8 @@ gameLoop _players (GameOver scores)
 -- World controlling events in a round
 gameLoop players (StartRound passDir scores)
     = do
-    deck <- shuffledDeck
+    sup <- newSupply
+    deck <- shuffledDeck sup
     -- need shuffled deck to have HCards, so need to pass supply to shuffled deck with ids
     let deal = fmap (unorderPile) $ S.unfoldr (drawExactly 13) $ S.fromList deck
     RoundOver round_scores <- gameLoop players $ PassingPhase deal passDir
@@ -139,9 +143,7 @@ gameLoop players (PassingPhase deal passDir)
                 PassRight   -> rotate $ rotate $ rotate s
         return $ S.zipWith Z.union s' $ S.zipWith (Z.\\) deal s
 
-    let who_starts = fromJust $ F.any (matches 2 Clubs) `S.findIndexL` board -- need to change member to a find predicate that ignores the ID
-    --either that or make the two of clubs card what we're seaching for
-    --but that seems much worse
+    let who_starts = fromJust $ F.any (matches 2 Clubs) `S.findIndexL` board
     gameLoop players $ InRound board [NewTrick]
                      $ TrickInfo who_starts S.empty (S.fromList [0,0,0,0]) False
 
