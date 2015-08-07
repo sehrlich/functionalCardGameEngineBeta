@@ -29,14 +29,11 @@ import Control.Lens
 -- was written by ekmett and is in LTS stackage
 import Control.Concurrent.Supply
 
-import Data.IntMap.Strict (IntMap)
-import qualified Data.IntMap.Strict as IntMap
-
 import Graphics.Gloss
 -- import qualified Graphics.Gloss.Data.Color as C
 import Graphics.Gloss.Interface.IO.Game --(playIO, Event(..) )
 
-import Data.Maybe (catMaybes, maybeToList, listToMaybe, fromMaybe)
+import Data.Maybe (catMaybes, listToMaybe, fromMaybe)
 -- Overview:
 -- Gui Stuff
 -- -- Thread
@@ -67,10 +64,10 @@ data GuiWorld = GuiWorld
     }
 
 data ZoneList = ZoneList
-    { _handZone :: ExactZone -- managedzone
-    , _playZone :: ExactZone -- managedzone
-    , _draggingZone :: SingletonZone
-    , _guiObjects :: ExactZone
+    { _handZone :: ExactZone Thing -- managedzone
+    , _playZone :: ExactZone Thing -- managedzone
+    , _draggingZone :: SingletonZone Thing
+    , _guiObjects :: ExactZone Thing 
     -- , _extraZones :: [AllZones]
     }
                 
@@ -89,40 +86,6 @@ data MiscState = MiscState
     
     -- _animation  --- collect drag and server generated animations
     -- these should be appropriate zones
-
-{- Zones are data structures to handle and organize objects on the screen
- - they should support the following operations
- - query if objectid is handled by zone
- - return location/position of valid objectids for rendering
- - accept objectid to be handled
- - delete objectid (i.e. stop representing them)
- -
- - on the subject of having zones as typeclasses, check out
- - http://www.haskellforall.com/2012/05/scrap-your-type-classes.html
- - for an alternative
- -}
--- class Zone z => HZone z where 
-class Zone z => HZone z where 
-    extract    :: z -> Int -> Maybe Thing
-    manage     :: Thing -> z -> z
-    remove     :: Int -> z -> z
-    clean      :: z -> z -- empties the zone
-    allMems    :: z -> [Int] -- returns allMems
-    checkPos   :: z -> Pos -> Maybe Int
-    checkAll   :: z -> Pos -> [Int]
-    checkAllT  :: z -> Pos -> [Thing]
-    update     :: z -> z
-    update = id
-    --filterZ    :: z -> (Thing -> Bool) -> (Thing -> t) -> [t]
-    -- ALSO it might be pretty to make this a lens, maybe with rename
-    -- idsAtPos
-    render     :: z -> [(Pos, Sprite)]
-
-data ExactZone = ExactZone (IntMap Thing)
--- can I make this a newtype instead?
-type SingletonZone          = Maybe Thing
-data AllZones = HSingleton SingletonZone
-              | HExact ExactZone
 
 type DebugInfo = [String]
 type Bbox          = (Float, Float)
@@ -162,93 +125,38 @@ data Thing = Thing
     , _objId :: Int
     }
 
+instance IDable Thing where
+    getID = _objId
+
+-- these are at the bottom for template haskell nonsense reasons
 makeLenses ''Location
 makeLenses ''GuiWorld
 makeLenses ''MiscState
 makeLenses ''ZoneList
 makeLenses ''Thing
 
-instance HZone ExactZone where
-    extract  (ExactZone z) i  = IntMap.lookup i z
-    manage t (ExactZone z)    = ExactZone $ IntMap.insert (t ^. objId) t z
-    remove i (ExactZone z)    = ExactZone $ IntMap.delete i z
-    clean _z                  = ExactZone $ IntMap.empty
-    allMems  (ExactZone z)    = IntMap.keys z
-    checkAllT (ExactZone z) p =
-        catMaybes [ checkP t | t <- IntMap.elems z]
-        where checkP t = do
-                        loc <- t ^. location 
-                        if isInRegion p loc
-                        then return $ t
-                        else Nothing
-    checkAll (ExactZone z) p  =
-        catMaybes [ checkP t | t <- IntMap.elems z]
-        where checkP t = do
-                        loc <- t ^. location 
-                        if isInRegion p loc
-                        then return $ t ^. objId
-                        else Nothing
-    checkPos z p              = listToMaybe $ checkAll z p
-    render   (ExactZone z)    = 
-        catMaybes [ info t | t <- IntMap.elems z]
-        where  info t = do
-                        spr <- t ^. sprite
-                        loc <- t ^. location
-                        return $ (loc ^. pos, spr) 
 
-instance HZone SingletonZone where
-    extract       = const -- should check id matches
-    manage t _z   = Just t
-    remove _i z   = z
-    clean (_)     = Nothing
-    allMems _     = []
-    checkAll z p  = maybeToList $ checkPos z p
-    checkAllT t p = maybeToList $ do
-        obj <- t
-        loc <- _location obj
-        if (isInRegion p loc)
-        then Just $ obj
-        else Nothing
-    checkPos (t) cpos = do
-        obj <- t
-        loc <- _location obj
-        if (isInRegion cpos loc)
-        then Just $ obj ^. objId
-        else Nothing
-    render z = maybeToList $ do
-        t <- z
-        spr <- t ^. sprite
-        loc <- t ^. location
-        let p = loc ^. pos
-        return (p, spr)
-    -- should be able to simplify render by using prisms
+_allMems :: Zone z => z Thing -> [Int] -- returns allMems
+_allMems = (map getID) . F.toList 
 
-updatePos :: Pos -> SingletonZone -> SingletonZone
-updatePos p z = do
+-- since Picture is a Monoid this might be even simpler
+render     :: Zone z => z Thing -> Picture
+render z = Pictures $! map renderThing (F.toList z)
+
+checkAllT  :: Zone z => z Thing -> Pos -> [Thing]
+checkAllT z p = catMaybes $! fmap (addIfInRegion) $! F.toList z 
+    where addIfInRegion t
+            = do
+            loc <- (t ^. location)
+            if isInRegion p loc 
+            then Just t 
+            else Nothing
+-- an instance where it would be nice to have a lens into zones
+updatePos :: Pos -> SingletonZone Thing -> SingletonZone Thing
+updatePos p (SingletonZone z) = SingletonZone $ do
         t <- z
         loc <- t ^. location
-        return $ t & location .~ (Just $ loc{_pos = p} )
-
--- There has got to be a better way to do this...
-instance HZone AllZones where
-    extract (HExact z) i = extract z i
-    extract (HSingleton z) i = extract z i
-    manage t (HExact z) = HExact $ manage t z
-    manage t (HSingleton z) = HSingleton $ manage t z
-    remove i (HExact z) = HExact $ remove i z 
-    remove i (HSingleton z) = HSingleton $ remove i z 
-    clean (HExact z) = HExact $ clean z 
-    clean (HSingleton z) = HSingleton $ clean z 
-    allMems (HExact z) = allMems z 
-    allMems (HSingleton z) = allMems z 
-    checkAllT (HExact z) p = checkAllT z p 
-    checkAllT (HSingleton z) p = checkAllT z p 
-    checkAll (HExact z) p = checkAll z p 
-    checkAll (HSingleton z) p = checkAll z p 
-    checkPos (HExact z) p = checkPos z p 
-    checkPos (HSingleton z) p = checkPos z p 
-    render (HSingleton z) = render z 
-    render (HExact z) = render z 
+        return $! t & location .~ (Just $ loc{_pos = p} )
 
 _addDebug :: String -> GuiWorld -> GuiWorld
 _addDebug s w = w & miscState . dbgInfo %~ (s:)
@@ -278,9 +186,9 @@ guiThread inbox outbox playerPos
 eventHandle :: Event -> GuiWorld -> IO GuiWorld
 eventHandle event world
     = case event of
-    EventResize _ws -> return $ world
+    EventResize _ws -> return $! world
     EventMotion mpos --(mx,my)
-        -> return $ world 
+        -> return $! world 
                     & miscState . mouseCoords  .~ mpos
                     & zones     . draggingZone %~ updatePos mpos
     EventKey k ks _mod mpos
@@ -312,8 +220,8 @@ eventHandle event world
                 F.foldrM (releaseProcess) world shouldGoOff
 
             (SpecialKey KeyEsc, Up) 
-                -> return $ world & miscState . toSend .~ Just CtsDisconnect
-            _   -> return $ world
+                -> return $! world & miscState . toSend .~ Just CtsDisconnect
+            _   -> return $! world
 
 -- Generic Gui -- Gui Elements -- collision detection
 isInRegion :: (Float, Float) -> Location -> Bool
@@ -324,13 +232,14 @@ isInRegion (mx,my) (Location ((cx,cy)) (bx,by)) =
     && my <= cy    +  by /2
 
 commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> GuiWorld -> IO GuiWorld
-commHandle inbox outbox _t world
+commHandle inbox outbox t world
     = do
     messageReceived <- atomically $ tryTakeTMVar inbox
     let world'      = processMessage messageReceived world
     let outMessage  = world' ^. miscState . toSend
     maybe           (return ()) (atomically . (putTMVar outbox)) outMessage
     return          $ world' & miscState . toSend .~ Nothing
+                    & miscState . dbgInfo .~ [show t]
 
 processMessage :: Maybe ServerToClient -> GuiWorld -> GuiWorld
 processMessage messageReceived world =
@@ -420,7 +329,7 @@ drawWorld world
     let debugInfo = world ^. miscState . dbgInfo
         dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
     -- will also want to render in depth order
-    return $ Pictures [ dbg
+    return $! Pictures [ dbg
                       , renderZones world
                       ]
 
@@ -429,14 +338,15 @@ drawWorld world
 renderZones :: GuiWorld -> Picture
 renderZones world = 
     let -- zs = world ^. zones . extraZones -- change to traversal? 
-        combine ((x,y), (Sprite spr )) = Translate x y spr
-        process z = map combine $ render z
+        {-combine ((x,y), (Sprite spr )) = Translate x y spr
+        process z = map combine $ render z-}
         hz = world ^. zones . handZone
         go = world ^. zones . guiObjects
         pz = world ^. zones . playZone
         dz = world ^. zones . draggingZone
     in
-    Pictures $ (concatMap process [go,hz,pz]) ++ (process dz) -- ++ (concatMap process zs)
+    -- can make this nicer by making zonelist traversable or foldable
+    Pictures $ (render dz):(map render [go,hz,pz]) --   -- ++ (concatMap process zs)
 
 renderCard :: Card -> Picture
 renderCard card
@@ -453,6 +363,13 @@ renderCard card
                     Hearts -> Color red
                     Diamonds -> Color red
 
+renderThing :: Thing -> Picture
+renderThing t = fromMaybe Blank $ do
+        (Sprite spr) <- t ^. sprite
+        loc <- t ^. location
+        let (tx,ty) = (loc ^. pos)
+        return $! Translate tx ty spr
+    
 playArea :: Thing
 playArea = Thing 
             Nothing 
@@ -482,7 +399,7 @@ handBackground = Thing
 
 playAreaHandleRelease :: Trigger
 playAreaHandleRelease world 
-    = return $ 
+    = return $! 
         case extract (world ^. zones . draggingZone) (error "shouldn't check id")  of 
             Just t -> processCardRelease t world
             Nothing -> world
@@ -529,20 +446,17 @@ processCardRelease thing world =
 
 gameWindowHandleRelease :: Trigger
 gameWindowHandleRelease world = 
-    return $ world & zones . draggingZone %~ clean
+    return $! world & zones . draggingZone %~ clean
  
 emptyWorld :: Int -> Supply -> GuiWorld
 emptyWorld p sup = GuiWorld (MiscState RenderEmpty ["Initializing"] p (0,0) Nothing Initializing sup) defaultZL
 
-
-emptyExactZone :: ExactZone
-emptyExactZone = ExactZone IntMap.empty
-
 defaultZL :: ZoneList
 defaultZL = ZoneList
-    { _handZone = emptyExactZone
-    , _playZone = emptyExactZone
-    , _draggingZone = Nothing
-    , _guiObjects = emptyExactZone & manage playArea & manage gameWindow & manage handBackground
+    { _handZone = new
+    , _playZone = new
+    , _draggingZone = new
+    , _guiObjects = new & manage playArea & manage gameWindow & manage handBackground
     -- , _extraZones = []
     }
+

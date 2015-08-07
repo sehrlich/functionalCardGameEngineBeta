@@ -115,6 +115,7 @@ gameLoop players (StartRound passDir scores)
                 -- World when trying to pass
 gameLoop players (PassingPhase deal passDir)
     = do
+    -- print $ "prepare to pass"
     board <-
         if passDir == NoPass then return deal else
         let getValidatedSelection i
@@ -129,6 +130,7 @@ gameLoop players (PassingPhase deal passDir)
             rotate (Empty) =  S.empty
             rotate _ = error "this is not a sequence"
         in do
+        -- print $ "telling players their hands"
         broadcast_ players (StcRender $ Passing (deal `S.index` 0) passDir)
         -- TODO make getValidatedSelection a thing that can be broadcast (i.e. similar to broadcast internal)
         s0 <- getValidatedSelection 0
