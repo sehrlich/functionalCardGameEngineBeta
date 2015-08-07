@@ -104,8 +104,7 @@ computeWinner (TrickInfo started played scores broken) =
 shuffledDeck :: Supply -> IO [Card] -- should take in idsupply
 shuffledDeck sup = do
     cards <- P.shuffledDeck
-    -- let ids = take52 $ F.toList $ S.unfoldr (return . freshId) sup
-    ids <- return $ [100,102..] -- FIXME should be drawn from idsupply
+    let ids = F.toList $ S.unfoldr (return . freshId) sup
     return [Card (P.suit c) (P.rank c) i | c <-cards | i <- ids]
 
 -- This seems like an ideal thing to practice using quickCheck with
