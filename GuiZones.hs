@@ -22,13 +22,18 @@ class IDable t where
     getID :: t -> Int
 
 class Foldable z => Zone z where
-    clean :: z t -> z t
-    manage :: IDable t => t -> z t -> z t
+    clean   :: z t      -> z t
+    manage  :: IDable t => t   -> z t -> z t
     extract :: IDable t => z t -> Int -> Maybe t
-    remove :: Int -> z t -> z t
-    new :: z t 
-    update :: z t -> z t -- needs to take in world info, maybe?
-    update = id
+    remove  :: Int      -> z t -> z t
+    new     :: z t
+    -- needs to take in world info, maybe?
+    -- so should probably be defined as a subclass in whatever gui
+    -- update :: z t -> z t
+    -- update = id
+    -- consider
+    -- filter :: z t -> (t -> Bool) -> [t]
+    -- with default implementation from foldable
 
 instance Zone ExactZone where
     clean _z                  = ExactZone $ IntMap.empty
@@ -38,15 +43,16 @@ instance Zone ExactZone where
     new = ExactZone IntMap.empty
 
 instance Zone SingletonZone where
-    extract (SingletonZone z) i = do
-       t <- z
-       if getID t == i
-       then return t
-       else Nothing
-    manage t _z   = SingletonZone $ Just t
-    remove _i z   = z
-    clean (_)     = SingletonZone $ Nothing
-    new    = SingletonZone $ Nothing
+    extract (SingletonZone z) i 
+        = do
+            t <- z
+            if getID t == i
+            then return t
+            else Nothing
+    manage t _z = SingletonZone $ Just t
+    remove _i z = z
+    clean (_)   = SingletonZone $ Nothing
+    new         = SingletonZone $ Nothing
 
 -- There has got to be a better way to do this...
 -- right now it doesn't seem needed though

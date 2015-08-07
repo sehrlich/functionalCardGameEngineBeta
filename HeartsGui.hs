@@ -143,6 +143,7 @@ _allMems = (map getID) . F.toList
 render     :: Zone z => z Thing -> Picture
 render z = Pictures $! map renderThing (F.toList z)
 
+-- similarly, there might be a nifty way to do this as [] is a monoid as well
 checkAllT  :: Zone z => z Thing -> Pos -> [Thing]
 checkAllT z p = catMaybes $! fmap (addIfInRegion) $! F.toList z 
     where addIfInRegion t
