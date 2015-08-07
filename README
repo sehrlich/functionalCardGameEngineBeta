@@ -14,6 +14,7 @@ Front end
         threepenny gui backend (maybe switch between gloss and threepenny?)
 Hearts
     graphics:
+    GRAPHICAL BUG: after a card gets played it keeps being displayed over a card actually in hand
     display cards in trick according to position
     display scores, pass left/right/across messages
     display opp's hands as card backs
@@ -28,12 +29,11 @@ Hearts
         managed zones, i.e. hand keeps track of card order and arranges cards appropriately (so don't need to reregister everything)
         play zone has N,S,E,W positions
 
-        pull zone class into separate module
+        -- pull zone class into separate module
         (possibly with basic gui constructor stuff,
         something that can consume a protocol and produce something sensible)
 
-        make zones foldable, remove all the stupid zone functions
-        replace allzones with something not stupid
+        -- replace allzones with something not stupid
 
         pass in idSupply, player position in relevant place
         autogenerate ids for things without ids

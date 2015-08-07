@@ -81,6 +81,7 @@ data MiscState = MiscState
     , _toSend       :: Maybe ClientToServer
     , _current      :: Directive
     , _idSupply     :: Supply
+    , _timeSoFar    :: Float
     }
     -- may need to register current effect seeking target
     
@@ -240,7 +241,7 @@ commHandle inbox outbox t world
     let outMessage  = world' ^. miscState . toSend
     maybe           (return ()) (atomically . (putTMVar outbox)) outMessage
     return          $ world' & miscState . toSend .~ Nothing
-                    & miscState . dbgInfo .~ [show t]
+                    & miscState . timeSoFar +~ t
 
 processMessage :: Maybe ServerToClient -> GuiWorld -> GuiWorld
 processMessage messageReceived world =
@@ -329,10 +330,13 @@ drawWorld world
     = do
     let debugInfo = world ^. miscState . dbgInfo
         dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
+        time = Translate (-400) 300 $ text $ show $ world ^. miscState . timeSoFar
     -- will also want to render in depth order
-    return $! Pictures [ dbg
-                      , renderZones world
-                      ]
+    return $! Pictures 
+            [ dbg
+            , time            
+            , renderZones world
+            ]
 
 -- Do I need to:
 --     Clip pics to zone bounding box
@@ -401,9 +405,9 @@ handBackground = Thing
 playAreaHandleRelease :: Trigger
 playAreaHandleRelease world 
     = return $! 
-        case extract (world ^. zones . draggingZone) (error "shouldn't check id")  of 
-            Just t -> processCardRelease t world
-            Nothing -> world
+        case (world ^. zones . draggingZone) of 
+            SingletonZone (Just t) -> processCardRelease t world
+            SingletonZone Nothing -> world
 
 processCardRelease :: Thing -> GuiWorld -> GuiWorld
 processCardRelease thing world =
@@ -450,7 +454,7 @@ gameWindowHandleRelease world =
     return $! world & zones . draggingZone %~ clean
  
 emptyWorld :: Int -> Supply -> GuiWorld
-emptyWorld p sup = GuiWorld (MiscState RenderEmpty ["Initializing"] p (0,0) Nothing Initializing sup) defaultZL
+emptyWorld p sup = GuiWorld (MiscState RenderEmpty ["Initializing"] p (0,0) Nothing Initializing sup 0.0) defaultZL
 
 defaultZL :: ZoneList
 defaultZL = ZoneList

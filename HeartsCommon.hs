@@ -32,6 +32,7 @@ module HeartsCommon
     ) where
 import PlayingCards (Suit(..), PlayingCard(..))
 import qualified PlayingCards as P
+import Data.List (unfoldr)
 import Data.Sequence (Seq)
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -104,7 +105,11 @@ computeWinner (TrickInfo started played scores broken) =
 shuffledDeck :: Supply -> IO [Card] -- should take in idsupply
 shuffledDeck sup = do
     cards <- P.shuffledDeck
-    let ids = F.toList $ S.unfoldr (return . freshId) sup
+    -- unfortunately this elegant unfoldr must not be evaluated
+    -- else it won't terminate
+    -- Hence we use the lazy version from Data.List
+    let ids = F.toList $ unfoldr (return . freshId) sup
+    -- ids <- return [100..]
     return [Card (P.suit c) (P.rank c) i | c <-cards | i <- ids]
 
 -- This seems like an ideal thing to practice using quickCheck with
