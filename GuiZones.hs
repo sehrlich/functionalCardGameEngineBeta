@@ -121,12 +121,16 @@ instance Foldable (OrderArrangedZone p ) where
     foldMap f z = foldMap f $ _elems z
 
 
--- want to use lens to clean all this up
 instance Zone (OrderArrangedZone p) where
     clean z       = z & elems .~ [] & noElements .~ 0
-    manage t z    = z & elems %~  (t :) & noElements +~ 1
+    manage t z    = if anyOf (elems . traverse) ((getID t ==) . getID ) z
+                    then z
+                    else z & elems %~  (t :) & noElements +~ 1
     extract  z i  = listToMaybe $ filter ((i ==) . getID) $ z ^. elems
-    remove i z    = z & elems %~ filter (not . (i ==) . getID) & noElements -~ 1
+    -- remove i z    = z & elems %~ filter (not . (i ==) . getID) & noElements -~ 1
+    remove i z    = if noneOf (elems . traverse) ((i ==) . getID ) z
+                    then z
+                    else z & elems %~ filter (not . (i ==) . getID) & noElements -~ 1
     
 initialize :: (Positioner p) => p -> OrderArrangedZone p t
 initialize p = OrderArrangedZone 0 p []

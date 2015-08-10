@@ -122,6 +122,7 @@ data Directive  = Exiting
                 | Waiting
                 deriving (Show)
 
+-- we should parameterize this over the object? then we can move the thing stuff to a generic gui module
 data Thing = Thing
     { _action :: Maybe Clickable
     , _reaction :: Maybe Target
@@ -134,6 +135,9 @@ data Thing = Thing
 
 instance IDable Thing where
     getID = _objId
+
+instance Eq Thing where
+    (==) a b = _objId a == _objId b
 
 instance Show Thing where
     show (Thing _ _ _o _ _l _b _i) =
@@ -340,10 +344,8 @@ registerWorld (RenderEmpty) w = w
 
 registerHand :: Hand -> GuiWorld -> GuiWorld
 registerHand hand world =
-    S.foldrWithIndex rgstr world (orderPile hand)
-    where rgstr i c w = w & zones . handZone %~ manage (crd i c)
-          loc i = (-351+ 55*(fromIntegral i))
-          crd i c = cardThing c & location .~ (Just $ loc i)
+    F.foldr rgstr world (orderPile hand)
+    where rgstr c w = w & zones . handZone %~ manage (cardThing c)
 
 registerTrick :: Trick -> GuiWorld -> GuiWorld
 registerTrick trick world =
@@ -375,7 +377,7 @@ drawWorld world
     = do
     let debugInfo = world ^. miscState . dbgInfo
         dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
-        time = Translate (-200) 100 $ text $ show $ world ^. miscState . timeSoFar
+        time = Translate (200) 200 $ scale 0.2 0.2 $ text $ take 5 $ show $ world ^. miscState . timeSoFar
     -- will also want to render in depth order
     return $! Pictures 
             [ dbg
@@ -408,17 +410,19 @@ renderCard card
         ]
         where suitColor = 
                 case _suit card of
-                    Clubs -> Color black
+                    Clubs -> Color $ light $ light black
                     Spades -> Color black
                     Hearts -> Color red
-                    Diamonds -> Color red
+                    Diamonds -> Color $ light red
 
 renderThing :: Thing -> Picture
 renderThing t = fromMaybe Blank $ do
         (Sprite spr) <- t ^. sprite
         (tx, ty) <- t ^. location
+        -- (bx, by) <- t ^. bbox
         -- should be using the bounding box to offset it so that it is displayed at center
         return $! Translate tx ty spr
+        -- return $! Translate (tx - bx/2) (ty - by/2) spr
     
 playArea :: Thing
 playArea = Thing 
@@ -506,7 +510,7 @@ emptyWorld p sup = GuiWorld (MiscState RenderEmpty ["Initializing"] p (0,0) Noth
 
 defaultZL :: ZoneList
 defaultZL = ZoneList
-    { _handZone = initialize $ linearBetween (400,-200) (-400, -200)
+    { _handZone = initialize $ linearBetween (400,-200) (-300, -200)
     , _playZone = new
     , _draggingZone = new
     , _guiObjects = new & manage playArea & manage gameWindow & manage handBackground
