@@ -63,8 +63,12 @@ data GuiWorld = GuiWorld
     , _zones :: ZoneList
     }
 
+-- consider trying
+-- type ZoneList = [MonadReader (Zone Thing)]
+-- or possibly
+-- type ZoneList = [MonadState (Zone Thing)]
 data ZoneList = ZoneList
-    { _handZone :: ExactZone Thing -- managedzone
+    { _handZone :: OrderArrangedZone LinearPositioner Thing -- ExactZone Thing -- managedzone
     , _playZone :: ExactZone Thing -- managedzone
     , _draggingZone :: SingletonZone Thing
     , _guiObjects :: ExactZone Thing 
@@ -92,7 +96,8 @@ type DebugInfo = [String]
 type Bbox          = (Float, Float)
 type Pos           = (Float, Float)
 data Sprite        = Sprite Picture -- RenderProcess if we need io to render?
-data Location      = Location { _pos::Pos, _bbox::Bbox} -- will want vector stuff to handle/change locations
+-- Locations should be understood to be at the center of the image
+-- data Location      = Location { _pos::Pos, _bbox::Bbox} -- will want vector stuff to handle/change locations
 
 -- TODO: should probably just remove depth outright
 -- depth should maybe be a list of ints so that all cards have same first index, and differ in next index
@@ -122,15 +127,26 @@ data Thing = Thing
     , _reaction :: Maybe Target
     , _object :: Maybe Card
     , _sprite :: Maybe Sprite
-    , _location :: Maybe Location
+    , _location :: Maybe Pos
+    , _bbox :: Maybe Bbox
     , _objId :: Int
     }
 
 instance IDable Thing where
     getID = _objId
 
+instance Show Thing where
+    show (Thing _ _ _o _ _l _b _i) =
+        case _o of
+            Nothing -> ""
+            Just c -> pretty c ++ " at loc " ++ 
+                case _l of 
+                    Nothing -> "no location!\n"
+                    Just l -> show l
+
+
 -- these are at the bottom for template haskell nonsense reasons
-makeLenses ''Location
+-- makeLenses ''Location
 makeLenses ''GuiWorld
 makeLenses ''MiscState
 makeLenses ''ZoneList
@@ -150,15 +166,49 @@ checkAllT z p = catMaybes $! fmap (addIfInRegion) $! F.toList z
     where addIfInRegion t
             = do
             loc <- (t ^. location)
-            if isInRegion p loc 
+            box <- (t ^. bbox)
+            if isInRegion p loc box
             then Just t 
             else Nothing
+
+isInRegion :: (Float, Float) -> Pos -> Bbox -> Bool
+isInRegion (mx,my) ((cx,cy)) (bx,by) =
+       cx -  bx /2 <= mx
+    && mx <= cx +     bx /2
+    && cy -  by /2 <= my
+    && my <= cy    +  by /2
+
+updateZones :: Float -> GuiWorld -> GuiWorld
+updateZones dt w =
+    w & zones . handZone %~ rePlace
+      & miscState . timeSoFar +~ dt
+
+
+-- also, (as in guiZone) perhaps this should by a Positioner p i, where i is the
+-- type of some needed info, occasionally the world, or the card or nothing (as 
+-- in this case)
+-- under this change (Positioner p i) is an instance of MonadReader ___ (Loc)?
+-- TODO make this less than oh-so-ugly
+-- possibly by doing an indexed traversal of elems using modlist
+rePlace :: Positioner p => OrderArrangedZone p Thing -> OrderArrangedZone p Thing
+rePlace z = -- z -- undefined
+    let strat = z ^. strategy
+        -- modThing updates according to strat
+        modList l = [ modThing i t |(i,t)<- zip [0..] l]
+        modThing :: Int -> Thing -> Thing
+        modThing i t = t & location .~ place strat i
+        _results = modList $ z^. elems
+    --in if length results > 0 then error (show results) else z & elems %~ modList
+    in z & elems %~ modList
+    -- in z & elems . itraverse %%@~ imap modThing
+
+-- This should get folded into update 
 -- an instance where it would be nice to have a lens into zones
 updatePos :: Pos -> SingletonZone Thing -> SingletonZone Thing
 updatePos p (SingletonZone z) = SingletonZone $ do
         t <- z
-        loc <- t ^. location
-        return $! t & location .~ (Just $ loc{_pos = p} )
+        -- loc <- t ^. location
+        return $! t & location .~ Just p
 
 _addDebug :: String -> GuiWorld -> GuiWorld
 _addDebug s w = w & miscState . dbgInfo %~ (s:)
@@ -177,12 +227,14 @@ guiThread inbox outbox playerPos
             (emptyWorld playerPos idSup) -- world
             drawWorld        -- picture to display
             eventHandle      -- event handler
-            (commHandle inbox outbox) -- time update
+            timeHandle -- time update
     where window = (InWindow
                    "Gloss" 	    -- window title
                                 -- title fixed for xmonad
                    (800, 600)   -- window size
                    (0, 0)) 	-- window position
+          timeHandle dt w = do
+                commHandle inbox outbox $ updateZones dt w
 
 -- Gui Event loop
 eventHandle :: Event -> GuiWorld -> IO GuiWorld
@@ -225,23 +277,15 @@ eventHandle event world
                 -> return $! world & miscState . toSend .~ Just CtsDisconnect
             _   -> return $! world
 
--- Generic Gui -- Gui Elements -- collision detection
-isInRegion :: (Float, Float) -> Location -> Bool
-isInRegion (mx,my) (Location ((cx,cy)) (bx,by)) =
-       cx -  bx /2 <= mx
-    && mx <= cx +     bx /2
-    && cy -  by /2 <= my
-    && my <= cy    +  by /2
-
-commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> Float -> GuiWorld -> IO GuiWorld
-commHandle inbox outbox t world
+commHandle :: TMVar ServerToClient -> TMVar ClientToServer -> GuiWorld -> IO GuiWorld
+commHandle inbox outbox world
     = do
     messageReceived <- atomically $ tryTakeTMVar inbox
     let world'      = processMessage messageReceived world
     let outMessage  = world' ^. miscState . toSend
     maybe           (return ()) (atomically . (putTMVar outbox)) outMessage
     return          $ world' & miscState . toSend .~ Nothing
-                    & miscState . timeSoFar +~ t
+                    -- & miscState . timeSoFar +~ t
 
 processMessage :: Maybe ServerToClient -> GuiWorld -> GuiWorld
 processMessage messageReceived world =
@@ -298,14 +342,14 @@ registerHand :: Hand -> GuiWorld -> GuiWorld
 registerHand hand world =
     S.foldrWithIndex rgstr world (orderPile hand)
     where rgstr i c w = w & zones . handZone %~ manage (crd i c)
-          loc i = Location (-351+ 55*(fromIntegral i), -200 ) (80,60)
+          loc i = (-351+ 55*(fromIntegral i))
           crd i c = cardThing c & location .~ (Just $ loc i)
 
 registerTrick :: Trick -> GuiWorld -> GuiWorld
 registerTrick trick world =
     S.foldrWithIndex rgstr world trick 
     where rgstr i c w = w & zones . playZone %~ manage (crd i c)
-          loc i = Location (-351+ 55*(fromIntegral i), 200 ) (80,60)
+          loc i = (-351+ 55*(fromIntegral i), 200 ) 
           crd i c = cardThing c & location .~ (Just $ loc i)
 
 cardThing :: Card -> Thing
@@ -317,7 +361,8 @@ cardThing card
                     Nothing -> w
         c   = Clickable cid $ return . click
         s   = Sprite (renderCard card)
-    in Thing (Just c) Nothing (Just card) (Just s) Nothing cid
+
+    in Thing (Just c) Nothing (Just card) (Just s) Nothing (Just (80,60)) cid
 
 
 {-registerButton :: Location -> Sprite -> Trigger -> GuiWorld -> GuiWorld-}
@@ -330,7 +375,7 @@ drawWorld world
     = do
     let debugInfo = world ^. miscState . dbgInfo
         dbg = {-Color rose $-} Translate (-200) (150) $ scale (0.225) (0.225) $ text $ unlines $ take 4 debugInfo
-        time = Translate (-400) 300 $ text $ show $ world ^. miscState . timeSoFar
+        time = Translate (-200) 100 $ text $ show $ world ^. miscState . timeSoFar
     -- will also want to render in depth order
     return $! Pictures 
             [ dbg
@@ -339,7 +384,7 @@ drawWorld world
             ]
 
 -- Do I need to:
---     Clip pics to zone bounding box
+--     Clip pics to zones bounding box
 renderZones :: GuiWorld -> Picture
 renderZones world = 
     let -- zs = world ^. zones . extraZones -- change to traversal? 
@@ -351,7 +396,7 @@ renderZones world =
         dz = world ^. zones . draggingZone
     in
     -- can make this nicer by making zonelist traversable or foldable
-    Pictures $ (render dz):(map render [go,hz,pz]) --   -- ++ (concatMap process zs)
+    Pictures $ render dz : render go : render hz : render pz : []--   -- ++ (concatMap process zs)
 
 renderCard :: Card -> Picture
 renderCard card
@@ -371,8 +416,8 @@ renderCard card
 renderThing :: Thing -> Picture
 renderThing t = fromMaybe Blank $ do
         (Sprite spr) <- t ^. sprite
-        loc <- t ^. location
-        let (tx,ty) = (loc ^. pos)
+        (tx, ty) <- t ^. location
+        -- should be using the bounding box to offset it so that it is displayed at center
         return $! Translate tx ty spr
     
 playArea :: Thing
@@ -381,7 +426,8 @@ playArea = Thing
             (Just $ Target playAreaHandleRelease) 
             Nothing 
             (Just $ Sprite (Color (makeColor 0.2 0.2 0.2 0.5) $ rectangleSolid (400) (300)) )
-            (Just $ Location (0,0) (400,300))
+            (Just (0,0))
+            (Just (400,300))
             (-5)
 
 gameWindow :: Thing
@@ -390,7 +436,8 @@ gameWindow = Thing
             (Just $ Target gameWindowHandleRelease)
             Nothing 
             (Just $ Sprite (Color (makeColor 0.2 0.6 0.2 0.2) $ rectangleSolid (600) (300)) )
-            (Just $ Location (0,0) (800,600))
+            (Just (0,0))
+            (Just (800,600))
             (-10)
 
 handBackground :: Thing
@@ -399,7 +446,8 @@ handBackground = Thing
                 Nothing
                 Nothing
                 (Just $ Sprite (Color (makeColor 0.4 0.7 0.2 0.5) $ rectangleSolid (800) (100)) )
-                (Just $ Location ((0,-200)) (800,100))
+                (Just ((0,-200)))
+                (Just (800,100))
                 (-42)
 
 playAreaHandleRelease :: Trigger
@@ -458,7 +506,7 @@ emptyWorld p sup = GuiWorld (MiscState RenderEmpty ["Initializing"] p (0,0) Noth
 
 defaultZL :: ZoneList
 defaultZL = ZoneList
-    { _handZone = new
+    { _handZone = initialize $ linearBetween (400,-200) (-400, -200)
     , _playZone = new
     , _draggingZone = new
     , _guiObjects = new & manage playArea & manage gameWindow & manage handBackground
