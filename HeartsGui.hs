@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns, PatternSynonyms #-} -- for pattern matching on sequences
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -68,8 +69,8 @@ data GuiWorld = GuiWorld
 -- or possibly
 -- type ZoneList = [MonadState (Zone Thing)]
 data ZoneList = ZoneList
-    { _handZone :: OrderArrangedZone LinearPositioner Thing -- ExactZone Thing -- managedzone
-    , _playZone :: ExactZone Thing -- managedzone
+    { _handZone :: OrderArrangedZone Thing -- ExactZone Thing -- managedzone
+    , _playZone :: OrderArrangedZone Thing -- ExactZone Thing -- managedzone
     , _draggingZone :: SingletonZone Thing
     , _guiObjects :: ExactZone Thing 
     -- , _extraZones :: [AllZones]
@@ -122,21 +123,21 @@ data Directive  = Exiting
                 | Waiting
                 deriving (Show)
 
--- we should parameterize this over the object? then we can move the thing stuff to a generic gui module
-data Thing = Thing
+data GuiThing o = Thing
     { _action :: Maybe Clickable
     , _reaction :: Maybe Target
-    , _object :: Maybe Card
+    , _object :: Maybe o
     , _sprite :: Maybe Sprite
     , _location :: Maybe Pos
     , _bbox :: Maybe Bbox
     , _objId :: Int
     }
+type Thing = GuiThing Card
 
 instance IDable Thing where
     getID = _objId
 
-instance Eq Thing where
+instance Eq (GuiThing o) where
     (==) a b = _objId a == _objId b
 
 instance Show Thing where
@@ -154,7 +155,7 @@ instance Show Thing where
 makeLenses ''GuiWorld
 makeLenses ''MiscState
 makeLenses ''ZoneList
-makeLenses ''Thing
+makeLenses ''GuiThing
 
 
 _allMems :: Zone z => z Thing -> [Int] -- returns allMems
@@ -184,7 +185,8 @@ isInRegion (mx,my) ((cx,cy)) (bx,by) =
 
 updateZones :: Float -> GuiWorld -> GuiWorld
 updateZones dt w =
-    w & zones . handZone %~ rePlace
+    w & zones . handZone %~ rePlace (w ^. zones . handZone . noElements)
+      & zones . playZone %~ rePlace 4
       & miscState . timeSoFar +~ dt
 
 
@@ -194,19 +196,16 @@ updateZones dt w =
 -- under this change (Positioner p i) is an instance of MonadReader ___ (Loc)?
 -- TODO make this less than oh-so-ugly
 -- possibly by doing an indexed traversal of elems using modlist
-rePlace :: Positioner p => OrderArrangedZone p Thing -> OrderArrangedZone p Thing
-rePlace z = -- z -- undefined
+rePlace :: Int -> OrderArrangedZone Thing -> OrderArrangedZone Thing
+rePlace n z =
     let strat = z ^. strategy
-        -- modThing updates according to strat
         modList l = [ modThing i t |(i,t)<- zip [0..] l]
         modThing :: Int -> Thing -> Thing
-        modThing i t = t & location .~ place strat i
-        _results = modList $ z^. elems
-    --in if length results > 0 then error (show results) else z & elems %~ modList
+        modThing i t = t & location .~ placeBy strat i n
     in z & elems %~ modList
-    -- in z & elems . itraverse %%@~ imap modThing
+    -- alternative idea : z & elems . itraverse %%@~ imap modThing
 
--- This should get folded into update 
+-- This should get folded into update / rePlace
 -- an instance where it would be nice to have a lens into zones
 updatePos :: Pos -> SingletonZone Thing -> SingletonZone Thing
 updatePos p (SingletonZone z) = SingletonZone $ do
@@ -308,12 +307,13 @@ processMessage messageReceived world =
     Just StcGameOver               -> acknowledged & miscState . current .~ Exiting
     Just (StcGetPassSelection _ _) -> world        & miscState . current .~ (CollectPass Z.empty)
     Just (StcWasPassed _)          -> cleaned ---- maybe keep track of info intelligently
+    -- ^ Need to put cards into hand ordered
     Just (StcGetMove hand info)    -> world        & miscState . current .~ (SelectCard hand info)
-    Just (StcRender rinfo )        -> registerWorld rinfo acknowledged  -- soon we'll just register the trick
+    Just (StcRender rinfo )        -> registerWorld rinfo acknowledged  -- soon we'll just register the trick?
     Just StcCleanTrick             -> cleaned
     Nothing ->
         case world ^. miscState . current of
-            -- consider using prism to remove Just
+            -- consider using prism to (re)move Just
         SendCard c      -> world & miscState . toSend .~ Just (CtsMove c) 
                                  & miscState . current .~ Waiting
         PassNow cs      -> world & miscState . toSend .~ Just (CtsPassSelection cs) 
@@ -347,12 +347,14 @@ registerHand hand world =
     F.foldr rgstr world (orderPile hand)
     where rgstr c w = w & zones . handZone %~ manage (cardThing c)
 
-registerTrick :: Trick -> GuiWorld -> GuiWorld
+registerTrick :: DecTrick -> GuiWorld -> GuiWorld
 registerTrick trick world =
-    S.foldrWithIndex rgstr world trick 
-    where rgstr i c w = w & zones . playZone %~ manage (crd i c)
-          loc i = (-351+ 55*(fromIntegral i), 200 ) 
-          crd i c = cardThing c & location .~ (Just $ loc i)
+    F.foldr rgstr w'' trick 
+    where rgstr c w = w & zones . playZone %~ manage (cardThing $ fst c)
+          off = -pi/2 + case trick of
+                (h :< _) -> fromIntegral (snd h - 1) * pi /2
+                _ -> 0
+          w'' = world & zones . playZone . strategy .~ arcBetween off (off-1.5*pi) (0,0) 100
 
 cardThing :: Card -> Thing
 cardThing card 
@@ -511,9 +513,13 @@ emptyWorld p sup = GuiWorld (MiscState RenderEmpty ["Initializing"] p (0,0) Noth
 defaultZL :: ZoneList
 defaultZL = ZoneList
     { _handZone = initialize $ linearBetween (400,-200) (-300, -200)
-    , _playZone = new
+    , _playZone = initialize $ linearBetween (100,0) (-100, 0)-- arcBetween (-0.5 * pi) pi (0,0) 100 
     , _draggingZone = new
     , _guiObjects = new & manage playArea & manage gameWindow & manage handBackground
     -- , _extraZones = []
     }
 
+-- Patterns go at end of file since hlint can't parse them
+-- pattern Empty   <- (S.viewl -> S.EmptyL)
+pattern x :< xs <- (S.viewl -> x S.:< xs)
+-- pattern xs :> x <- (S.viewr -> xs S.:> x)

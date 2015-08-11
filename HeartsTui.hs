@@ -87,7 +87,7 @@ renderText (RenderInRound hand played scores) = do
     -- the following clears the screen
     putStrLn "\ESC[H\ESC[2J"
 
-    putStrLn $ renderTextPlay played
+    putStrLn $ renderTextPlay $ undefined played
     putStrLn $ renderTextHand hand
     renderTextScores scores
 

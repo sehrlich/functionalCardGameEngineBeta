@@ -156,7 +156,7 @@ gameLoop _players (InRound _board [] _info)
 gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores _broken))
     = do
     -- broadcast_' players $ StcRender . \i -> RenderInRound (S.index board i) played scores
-    broadcast_' players $ StcRender . (flip (flip RenderInRound played) scores) . (S.index board)
+    broadcast_' players $ StcRender . (flip (flip RenderInRound (decorate info played)) scores) . (S.index board)
     let world' = InRound board on_stack info
     -- need to guarantee that stack is never empty
     case now of
@@ -177,7 +177,11 @@ gameLoop players (InRound board (now:on_stack) info@(TrickInfo _w played scores 
             move <- msgClient (players!!curPlayer info) (StcGetMove hand info)
             let player_input = validate move
             gameLoop players $ InRound board (player_input:on_stack) info
-            where validate (CtsMove move) = Effect (play move)
+            where validate (CtsMove move) = 
+                    -- check that move is valid, it is players hand, they don't have to follow suit, etc.
+                    -- if so then
+                    Effect (play move)
+                    -- else send back message to client
                   validate e = error $ "recieved from " ++ (show $ curPlayer info) ++ " wrong type of message: " ++ show e
         Effect move ->
             gameLoop players $ move world'

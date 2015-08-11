@@ -6,7 +6,6 @@ module GuiZones
     , SimpleZone(..)
 
     , IDable(..)
-    , Positioner(..)
     -- Specific types of zones
     , ExactZone(..)
     , SingletonZone(..)
@@ -17,10 +16,10 @@ module GuiZones
     , elems
     , noElements
     -- commonPositioners
+    , PlacementStrategy(..)
     , linearBetween
-    , LinearPositioner(..)
+    , arcBetween
     -- CirclularP
-    -- ArcP
     --
     -- can do animation with time-varying positioners
     )
@@ -30,7 +29,7 @@ import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
 import Data.Maybe (listToMaybe)
-import Linear.Vector (lerp)
+import Linear.Vector (lerp, (^+^), (*^))
 import Linear.V2
 
 import Control.Lens
@@ -54,6 +53,8 @@ class (Foldable z) => Zone z where
     -- there needs to be a middle ground for common context-aware zones
     -- update :: z t -> z t
     -- update = id
+    --
+    -- Also, should Zone supply a lens/traversal into the elements?
 
 class (Zone z) => SimpleZone z where
     new     :: z t
@@ -80,12 +81,7 @@ instance Zone SingletonZone where
 instance SimpleZone SingletonZone where
     new       = SingletonZone $ Nothing
 
-{-class PlacementStrategy ps where
-    reposition :: Zone z => (t -> Maybe (Float, Float) -> t) -> z t -> z t-}
--- maybe positioner wants to look at thing?
--- maybe these are Isos? of a sort?
-class Positioner p where
-    place :: p -> Int -> Maybe (Float, Float)
+data PlacementStrategy = PlacementStrategy { placeBy :: Int -> Int -> Maybe (Float, Float) }
 
 type V = V2 Float
 convert :: V -> (Float, Float)
@@ -93,35 +89,38 @@ convert (V2 x y) = (x, y)
 wrap :: (Float, Float) -> V
 wrap (x, y) = V2 x y
 
-data LinearPositioner = LinearP
-    { _start :: V
-    , _end :: V
-    -- , _vec :: (Float,Float)
-    , _num :: Int
-    }
+linearBetween :: (Float, Float) -> (Float, Float) -> PlacementStrategy
+linearBetween a b = PlacementStrategy $ place (wrap a) (wrap b)
+    where place s e i n = 
+            if n > i && i >= 0 -- need to deal with cases n==0,1 separately
+            then Just $ convert (lerp (fromIntegral i / fromIntegral n) s e)
+            else Nothing
 
-linearBetween :: (Float, Float) -> (Float, Float) -> LinearPositioner
-linearBetween a b = LinearP (wrap a) (wrap b) 13 -- 0 that 13 needs to be read from the zone
-instance Positioner LinearPositioner where
-    place (LinearP s e n) i = 
-        if n > i && i >= 0 -- need to deal with cases n==0,1 separately
-        then Just $ convert (lerp (fromIntegral i / fromIntegral n) s e)
-        else Nothing
+arcBetween :: Float -> Float -> (Float, Float) -> Float -> PlacementStrategy
+arcBetween a t c r = PlacementStrategy place 
+    where place i n =
+            if n > i && i >= 0 && n > 1-- need to deal with cases n==0,1 separately
+            then Just $ convert $ 
+                (wrap c) ^+^ r *^ angle ((fromIntegral i / fromIntegral (n-1)) * (t-a) + a)
+            else Nothing
+
+-- translate :: (Float, Float) -> PlacementStrategy -> PlacementStrategy
+-- also want centered variants, etc.
 
 -- if we use array, we store #elems implicitly and can access elems
-data OrderArrangedZone p t = OrderArrangedZone
+data OrderArrangedZone t = OrderArrangedZone
     { _noElements :: Int -- must be positive
-    , _strategy :: p
+    , _strategy :: PlacementStrategy
     , _elems :: [t]
     } -- deriving Foldable
 makeLenses ''OrderArrangedZone 
 
-instance Foldable (OrderArrangedZone p ) where
+instance Foldable (OrderArrangedZone) where
     -- foldMap f (OrderArrangedZone _n _s e) = foldMap f e
     foldMap f z = foldMap f $ _elems z
 
 
-instance Zone (OrderArrangedZone p) where
+instance Zone (OrderArrangedZone) where
     clean z       = z & elems .~ [] & noElements .~ 0
     manage t z    = if anyOf (elems . traverse) ((getID t ==) . getID ) z
                     then z
@@ -132,9 +131,23 @@ instance Zone (OrderArrangedZone p) where
                     then z
                     else z & elems %~ filter (not . (i ==) . getID) & noElements -~ 1
     
-initialize :: (Positioner p) => p -> OrderArrangedZone p t
+initialize :: PlacementStrategy -> OrderArrangedZone t
 initialize p = OrderArrangedZone 0 p []
 
+{-
+-- type L a = Lens' a (Maybe (Float,Float))
+positionBy :: (Positioner p, Zone z, L l)=> l -> p -> z t -> z t
+positionBy l p z = -- z -- undefined
+    let strat = z ^. strategy
+        -- modThing updates according to strat
+        modList l = [ modThing i t |(i,t)<- zip [0..] l]
+        modThing :: Int -> Thing -> Thing
+        modThing i t = t & location .~ place p i (z ^. noElements) 
+        _results = modList $ z^. elems
+    --in if length results > 0 then error (show results) else z & elems %~ modList
+    in z & elems %~ modList
+    -- in z & elems . itraverse %%@~ imap modThing
+-}
 
 -- There has got to be a better way to do this...
 -- right now it doesn't seem needed though

@@ -14,8 +14,8 @@ Front end
         threepenny gui backend (maybe switch between gloss and threepenny?)
 Hearts
     graphics:
-    GRAPHICAL BUG: after a card gets played it keeps being displayed over a card actually in hand
-    display cards in trick according to position
+    BUG: after a card gets played it gets displayed at beginning of hand until trick is cleared
+    -- display cards in trick according to position -- make this non-ugly
     display scores, pass left/right/across messages
     display opp's hands as card backs
         animate opps playing cards/sweeping cards off table
@@ -26,20 +26,14 @@ Hearts
         indicate whose turn it is
 
     architecture:
-        managed zones, i.e. hand keeps track of card order and arranges cards appropriately (so don't need to reregister everything)
-        play zone has N,S,E,W positions
 
         -- pull zone class into separate module
         (possibly with basic gui constructor stuff,
         something that can consume a protocol and produce something sensible)
 
-        -- replace allzones with something not stupid
-
         pass in idSupply, player position in relevant place
         autogenerate ids for things without ids
 
-        use idSupply with shuffled cards rather than adhoc ids
-        
     maybe:
     -- move to mvc
     -- stop computing scores along the way and store tricks, then compute at round end

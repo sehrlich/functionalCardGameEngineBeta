@@ -5,6 +5,10 @@ module HeartsCommon
     , Card(..)
     , Trick
     , Hand
+    , DecTrick
+    , undecorate
+    , decorate
+
     , shuffledDeck
     , P.matches
     , orderPile
@@ -83,6 +87,12 @@ instance PlayingCard Card where
 
 type Hand = Set Card
 type Trick = Seq Card
+type DecTrick = Seq (Card,Int)
+
+undecorate :: DecTrick -> Trick
+undecorate d = fmap fst d
+decorate :: Info -> Trick -> DecTrick
+decorate i t = S.mapWithIndex (\n c-> (c, curPlayer i - n `mod` 4)) t
 
 orderPile :: Hand -> Trick
 orderPile pile = S.fromList $ F.toList pile
@@ -109,7 +119,6 @@ shuffledDeck sup = do
     -- else it won't terminate
     -- Hence we use the lazy version from Data.List
     let ids = F.toList $ unfoldr (return . freshId) sup
-    -- ids <- return [100..]
     return [Card (P.suit c) (P.rank c) i | c <-cards | i <- ids]
 
 -- This seems like an ideal thing to practice using quickCheck with
@@ -151,9 +160,9 @@ data ServerToClient = StcGetMove Hand Info
                     deriving (Show)
 
 data RenderInfo = RenderServerState Board Info
-                | Passing HeartsCommon.Hand PassDir
+                | Passing Hand PassDir
                 | BetweenRounds Scores
-                | RenderInRound HeartsCommon.Hand HeartsCommon.Trick Scores
+                | RenderInRound Hand DecTrick Scores
                 | RenderEmpty
                 | Canonical Mode [Card] [String]
                 deriving (Show)
